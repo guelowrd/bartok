@@ -7,12 +7,17 @@ and (in the full design) settled privately on **Miden**.
 
 ## What's here
 
-- **`ux-prototype/`** — clickable UI prototype (neo-brutalist, no build step). Open `index.html`:
-  it's the buyer chat app; the seller dashboard is behind the small "Earn" link. Each reply shows
-  a live price and a "✓ verified" chip — click it to see what's *proven & public* vs *kept private*.
-- **`zktls-spike/`** — a working proof that a real model-API call can be cryptographically proven
-  (model + token usage) while redacting the API key, prompt, and answer. Built on
+See **`ARCHITECTURE.md`** for how these three parts compose into one flow.
+
+- **`ux-prototype/`**: clickable UI prototype (neo-brutalist, no build step). Open `index.html`:
+  the buyer chat app, with the seller dashboard behind the small "Earn" link. Each reply shows a
+  live price and a "✓ verified" chip (tap it for a plain-language "this is real" reassurance).
+- **`zktls-spike/`**: a working proof that a real model-API call can be cryptographically verified
+  (which model ran, exact token usage) while redacting the API key, prompt, and answer. Built on
   [TLSNotary](https://tlsnotary.org). See `zktls-spike/RESULTS.md` and `zktls-spike/ARCHITECTURE.md`.
+- **`miden-settlement/`**: the on-chain half, a Miden note that splits the buyer's escrow into a
+  payment to the seller and a refund to the buyer (two P2ID notes). Increment 1 (the split) is
+  tested green; Falcon-attestation verification is the next increment. See its README.
 
 ## Try the UI
 ```bash
@@ -27,7 +32,17 @@ cp .env.example .env       # add a free OpenRouter key: https://openrouter.ai/ke
 ./test-zktls.sh            # notarize a real call -> verify it -> show tamper-rejection
 ```
 
+## Try the Miden settlement
+```bash
+cd miden-settlement
+./install.sh                       # wires the contract + test into ~/Code/agentic-template
+cd ~/Code/agentic-template/project-template
+cargo test -p integration --release --test settlement_split_test   # needs the protocol-0.14 toolchain (see miden-settlement/README.md)
+```
+
 ## Status
-- Phase 0 — UX prototype: **done**
-- Phase 1 — zkTLS verification: **done** (real openrouter.ai call proven end-to-end)
-- Phase 2/3 — Miden settlement (oracle re-signs RPO Falcon-512, on-chain usage-based split): next
+- UX prototype: **done** (mock)
+- zkTLS verification: **done**, tested against a real openrouter.ai call
+- Miden settlement, increment 1 (escrow split into seller-pay + buyer-refund): **done**, MockChain test green
+- Miden settlement, increment 2 (verify the oracle's Falcon-512 attestation in the note): next
+- Oracle service (verify the zkTLS proof, then sign the Falcon attestation): the connecting seam, not built yet

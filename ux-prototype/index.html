@@ -168,29 +168,18 @@
 <style>
   .proof-overlay{position:fixed;inset:0;background:rgba(21,18,12,.55);display:flex;align-items:center;justify-content:center;padding:20px;z-index:50;}
   .proof-overlay.hidden{display:none;}
-  .proof-card{background:var(--panel);border:var(--bd);border-radius:var(--r);box-shadow:var(--sh);max-width:440px;width:100%;padding:20px;max-height:90vh;overflow:auto;}
-  .proof-h{font-family:var(--f-disp);text-transform:uppercase;font-size:18px;}
-  .proof-sub{color:var(--muted);font-size:13px;margin:4px 0 14px;}
-  .proof-sec{border:2.5px solid var(--ink);border-radius:12px;padding:10px 12px;margin-bottom:12px;}
-  .proof-pub{background:#eef9d6;}
-  .proof-sec-t{font-family:var(--f-mono);font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;}
-  .proof-row{display:flex;justify-content:space-between;gap:10px;font-size:13px;padding:3px 0;}
-  .proof-row .k{color:var(--muted);} .proof-row .val{font-family:var(--f-mono);text-align:right;}
+  .proof-card{background:var(--panel);border:var(--bd);border-radius:var(--r);box-shadow:var(--sh);max-width:380px;width:100%;padding:24px;text-align:center;}
+  .proof-big{font-size:46px;color:var(--good);line-height:1;}
+  .proof-h{font-family:var(--f-disp);text-transform:uppercase;font-size:20px;margin:6px 0 10px;}
+  .proof-text{font-size:15px;color:var(--ink);margin-bottom:18px;}
   .v{cursor:pointer;}
 </style>
 <div id="proofModal" class="proof-overlay hidden" onclick="if(event.target===this)closeProof()">
   <div class="proof-card">
-    <div class="proof-h">Proof of this reply</div>
-    <div class="proof-sub">What the network &amp; Miden can verify — and what stays private to you.</div>
-    <div class="proof-sec proof-pub">
-      <div class="proof-sec-t">✓ Proven &amp; public</div>
-      <div id="proofPublic"></div>
-    </div>
-    <div class="proof-sec">
-      <div class="proof-sec-t">🔒 Stays private</div>
-      <div id="proofPrivate"></div>
-    </div>
-    <button class="btn btn--block" onclick="closeProof()">Close</button>
+    <div class="proof-big">✓</div>
+    <div class="proof-h">Verified real</div>
+    <div class="proof-text" id="proofText"></div>
+    <button class="btn btn--block" onclick="closeProof()">Got it</button>
   </div>
 </div>
 
@@ -205,7 +194,6 @@
     smart:{label:'Smart',base:0.07,desc:'balanced everyday pick',speed:'a few seconds'},
     genius:{label:'Genius',base:0.25,desc:'most capable, hard asks',speed:'slower, deeper'},
   };
-  const TIER_MAXTOK={basic:256,smart:1024,genius:4096};
   const POS_TAGS=['Fast','Helpful','Accurate','Great value','Clear'];
   const NEG_TAGS=['Too slow','Unhelpful','Inaccurate','Overpriced'];
 
@@ -284,12 +272,10 @@
     ai._price.innerHTML='<span class="amt">up to '+money(maxThis)+'</span>';
     setTimeout(()=>{
       const charge=Math.min(maxThis,actualFor(h.mult));
-      const maxTok=TIER_MAXTOK[state.tier];
-      const ptok=24+Math.floor(Math.random()*90), ctok=16+Math.floor(Math.random()*(maxTok-16));
       ai.querySelector('.bubble').textContent='Replying to: “'+text+'” [mock reply from '+h.name+' at '+TIERS[state.tier].label+' level].';
       ai._price.className='price';
-      ai._price.innerHTML='<span class="amt">&minus;'+money(charge)+'</span><span class="v" title="See what was proven vs kept private">✓ verified ⓘ</span>';
-      ai._price.querySelector('.v').onclick=()=>openProof({helper:h.name,tier:TIERS[state.tier].label,maxTok,ptok,ctok,charge});
+      ai._price.innerHTML='<span class="amt">&minus;'+money(charge)+'</span><span class="v" title="Tap to check this is real">✓ verified</span>';
+      ai._price.querySelector('.v').onclick=()=>openProof(h.name);
       setBalance(state.balance-charge);state.spent+=charge;state.replies++;state.busy=false;refreshSend();updateHint();$('chat').scrollTop=$('chat').scrollHeight;
     },1300);
   }
@@ -348,21 +334,11 @@
   }
   $('newChat').onclick=()=>{ renderClasses(); renderFavQuick(); show('request'); };
 
-  // proof receipt: what's revealed vs hidden for a given reply
-  function proofRows(pairs){return pairs.map(([k,v])=>`<div class="proof-row"><span class="k">${k}</span><span class="val">${v}</span></div>`).join('');}
-  function openProof(d){
-    $('proofPublic').innerHTML=proofRows([
-      ['came from','openrouter.ai ✓ TLS'],
-      ['model',d.helper+' · '+d.tier],
-      ['max tokens',d.maxTok],
-      ['tokens used',(d.ptok+d.ctok)+' ('+d.ptok+'+'+d.ctok+')'],
-      ['you paid',money(d.charge)],
-    ]);
-    $('proofPrivate').innerHTML=proofRows([
-      ['your prompt','hidden — only you'],
-      ['the answer','encrypted to you'],
-      ["seller's API key",'never exposed'],
-    ]);
+  // friendly "is this real?" reassurance — no numbers, no jargon
+  function openProof(helper){
+    $('proofText').innerHTML='This answer genuinely came from <b>'+helper+'</b>, the helper you picked. '
+      +'We checked it independently, so it can\'t be faked or swapped for a cheaper bot.<br><br>'
+      +'🔒 Your message and the answer stay private to you.';
     $('proofModal').classList.remove('hidden');
   }
   function closeProof(){$('proofModal').classList.add('hidden');}

@@ -1,0 +1,13 @@
+# secrets — never commit
+.env
+**/.env
+
+# TLSNotary checkout (re-created by zktls-spike/setup.sh)
+zktls-spike/tlsn/
+
+# build + notarization artifacts
+**/target/
+**/*.tlsn
+
+# os
+.DS_Store

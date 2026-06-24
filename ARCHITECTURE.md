@@ -35,27 +35,34 @@ really ran the model** (zkTLS), and **on-chain settlement** that pays per actual
 | Seller dashboard | `ux-prototype/seller.html` | Mock, done |
 | Prove real model + exact token usage, redact secrets | `zktls-spike/` | **Working, tested against real openrouter.ai** |
 | Escrow split into seller-pay + buyer-refund (2x P2ID) | `miden-settlement/` (incr 1) | **Working, MockChain test green** |
-| Verify oracle Falcon-512 sig in the note before paying | `miden-settlement/` (incr 2) | Pending (de-risked) |
-| **Oracle**: verify zkTLS proof -> sign Falcon attestation | — | Not built (the connective seam) |
+| **Oracle**: verify zkTLS proof -> derive charge | `zktls-spike/openrouter-example/oracle.rs` | **Built + tested** |
+| End-to-end pipeline (zkTLS -> oracle -> settlement) | `stitch.sh` | **Working (`./stitch.sh`)** |
+| Gate settlement on the oracle on-chain | `miden-settlement/` (incr 2) | Deferred (Miden 0.14 constraint, see below) |
 | Embedded wallet + real escrow funding | — | Not built |
 
-## The seam, concretely
+## The pipeline, concretely
 
-The two working halves already speak the same language, so the oracle is the only missing connective code:
+The three parts are wired together by `stitch.sh`, which runs end-to-end:
 
-- The zkTLS spike notarized a **real** call and proved `usage = {prompt 81, completion 64, total 145}`
-  for model `openai/gpt-oss-20b:free` (see `zktls-spike/RESULTS.md`).
-- The Miden settlement note splits an escrow on a `charge` value (see `miden-settlement/`).
-- `charge = usage * price_per_token`. So the zkTLS attestation's `usage` is exactly the settlement
-  note's input. The **oracle** is the service that: (1) verifies the TLSNotary proof off-chain,
-  (2) computes the commitment over `{model, usage->charge, prompt-hash}`, (3) signs it with
-  RPO Falcon-512 — which is what increment 2 of the note will verify on-chain.
+1. **zkTLS** notarizes a real `openrouter.ai` call and proves the token `usage` (redacting key/prompt/answer).
+2. The **oracle** (`oracle.rs`) verifies that TLSNotary presentation off-chain and derives
+   `charge = total_tokens * price`.
+3. The **Miden** settlement note splits the escrow on that `charge` (seller paid, buyer refunded).
+
+A real run: 145 proven tokens, so the seller is paid 145 and the buyer refunded 435 on Miden.
+
+### Deferred: on-chain oracle gating
+Ideally the note would verify an oracle Falcon-512 *signature* over the settlement commitment before
+paying. Miden 0.14's falcon-sig mechanism only signs the *transaction summary*, not a standalone
+commitment, so this is deferred. The planned approach: gate settlement by restricting the settlement
+transaction to the **oracle account** (its native Falcon auth over the tx summary binds the exact
+split). Today the oracle's `charge` flows in as data; the cryptographic on-chain gate is the next step.
 
 ## Trust model
 - zkTLS (TLSNotary) proves provenance/usage; an off-chain **notary/oracle** is the trust anchor
   (a single oracle for the demo, a threshold attestor set to harden).
-- Miden verifies the oracle's Falcon-512 attestation **natively** and settles privately
-  (only commitments + payment on-chain).
+- Settlement is private on Miden (only commitments + payment on-chain). On-chain verification of the
+  oracle's authorization (Falcon-512) is the deferred step described above.
 - The closed-model lane breaches provider ToS; this is a proof-of-concept, not a product.
 
 See each component's own README and `zktls-spike/ARCHITECTURE.md` for details.

@@ -53,13 +53,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Some(body) = response.body.as_ref() {
         if let BodyContent::Json(json) = &body.content {
-            for path in [
-                "id",
-                "model",
-                "usage.prompt_tokens",
-                "usage.completion_tokens",
-                "usage.total_tokens",
-            ] {
+            for path in ["id", "model", "usage"] {
                 if let Some(field) = json.get(path) {
                     builder.reveal_recv(field)?;
                 } else {

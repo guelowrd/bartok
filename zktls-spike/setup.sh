@@ -13,7 +13,7 @@ fi
 
 DST=tlsn/crates/examples/openrouter
 mkdir -p "$DST"
-cp openrouter-example/prove.rs openrouter-example/present.rs openrouter-example/verify.rs "$DST"/
+cp openrouter-example/prove.rs openrouter-example/present.rs openrouter-example/verify.rs openrouter-example/oracle.rs "$DST"/
 
 CARGO=tlsn/crates/examples/Cargo.toml
 # add the real-web-PKI roots dep (idempotent)
@@ -33,6 +33,10 @@ path = "openrouter/present.rs"
 [[example]]
 name = "openrouter_verify"
 path = "openrouter/verify.rs"
+
+[[example]]
+name = "openrouter_oracle"
+path = "openrouter/oracle.rs"
 EOF
 
 echo "Done. Next:"

@@ -1,0 +1,77 @@
+/* BARTOK — neo-brutalist design system */
+@import url('https://fonts.googleapis.com/css2?family=Archivo+Black&family=Space+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap');
+
+:root{
+  --paper:#F4ECD8;      /* warm canvas */
+  --panel:#FFFDF6;      /* card surface */
+  --ink:#15120C;        /* near-black */
+  --lime:#C9F24A;       /* primary accent */
+  --coral:#FF6A3D;      /* hot accent */
+  --cobalt:#2F6BFF;     /* cool accent / user */
+  --good:#1AA85B;
+  --muted:#6E665A;
+  --bd:3px solid var(--ink);
+  --sh:6px 6px 0 var(--ink);
+  --sh-sm:3px 3px 0 var(--ink);
+  --r:14px;
+  --f-disp:'Archivo Black',-apple-system,BlinkMacSystemFont,sans-serif;
+  --f-ui:'Space Grotesk',-apple-system,BlinkMacSystemFont,sans-serif;
+  --f-mono:'Space Mono',ui-monospace,monospace;
+}
+*{box-sizing:border-box;}
+body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--f-ui);line-height:1.45;-webkit-font-smoothing:antialiased;}
+h1,h2,h3{font-family:var(--f-disp);text-transform:uppercase;line-height:1.0;letter-spacing:.01em;margin:0;}
+h1{font-size:30px;} h2{font-size:14px;letter-spacing:.08em;}
+a{color:var(--ink);}
+::selection{background:var(--lime);}
+
+/* brand */
+.brand{font-family:var(--f-disp);font-size:22px;letter-spacing:1px;text-transform:uppercase;text-decoration:none;color:var(--ink);display:inline-block;}
+.brand .hl{background:var(--lime);border:2.5px solid var(--ink);padding:0 5px;margin:0 1px;box-shadow:var(--sh-sm);}
+.role{font-family:var(--f-mono);font-size:11px;font-weight:700;text-transform:uppercase;border:2.5px solid var(--ink);background:var(--coral);color:#fff;border-radius:999px;padding:2px 10px;margin-left:10px;}
+
+/* surfaces */
+.card{background:var(--panel);border:var(--bd);border-radius:var(--r);box-shadow:var(--sh);}
+
+/* buttons */
+.btn{font-family:var(--f-ui);font-weight:700;font-size:16px;background:var(--lime);color:var(--ink);border:var(--bd);border-radius:var(--r);box-shadow:var(--sh);padding:14px 18px;cursor:pointer;transition:transform .06s,box-shadow .06s;display:inline-block;text-align:center;text-decoration:none;}
+.btn:hover{transform:translate(-1px,-1px);box-shadow:7px 7px 0 var(--ink);}
+.btn:active{transform:translate(4px,4px);box-shadow:0 0 0 var(--ink);}
+.btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:var(--sh);}
+.btn--coral{background:var(--coral);color:#fff;}
+.btn--cobalt{background:var(--cobalt);color:#fff;}
+.btn--ghost{background:var(--panel);}
+.btn--block{display:block;width:100%;}
+
+/* chips / badges */
+.chip{display:inline-flex;align-items:center;gap:5px;font-family:var(--f-mono);font-size:12px;font-weight:700;border:2.5px solid var(--ink);border-radius:999px;padding:3px 10px;background:var(--panel);}
+.chip--good{background:var(--lime);}
+.chip--ink{background:var(--ink);color:var(--paper);}
+
+/* money */
+.price{font-family:var(--f-mono);font-weight:700;}
+
+/* form controls */
+input,textarea,select{font-family:var(--f-ui);background:var(--panel);color:var(--ink);border:var(--bd);border-radius:10px;padding:11px;font-size:15px;}
+input:focus,textarea:focus,select:focus{outline:none;box-shadow:var(--sh-sm);}
+
+/* chat bubbles */
+.bubble{max-width:80%;padding:11px 14px;border:var(--bd);border-radius:16px;font-size:15px;white-space:pre-wrap;box-shadow:var(--sh-sm);}
+.bubble.user{background:var(--cobalt);color:#fff;border-bottom-right-radius:5px;}
+.bubble.ai{background:var(--panel);border-bottom-left-radius:5px;}
+
+/* segmented control */
+.seg{display:inline-flex;border:var(--bd);border-radius:11px;overflow:hidden;box-shadow:var(--sh-sm);}
+.seg button{font-family:var(--f-ui);font-weight:700;font-size:13px;background:var(--panel);color:var(--ink);border:none;border-right:2.5px solid var(--ink);padding:8px 15px;cursor:pointer;}
+.seg button:last-child{border-right:none;}
+.seg button.sel{background:var(--lime);}
+
+/* tags */
+.tag{border:2.5px solid var(--ink);border-radius:999px;padding:7px 13px;font-size:13px;font-weight:700;background:var(--panel);cursor:pointer;}
+.tag.on{background:var(--lime);box-shadow:var(--sh-sm);}
+.tag.bad.on{background:var(--coral);color:#fff;}
+
+/* scrollbar */
+::-webkit-scrollbar{width:12px;height:12px;}
+::-webkit-scrollbar-thumb{background:var(--ink);border:3px solid var(--paper);border-radius:10px;}
+.muted{color:var(--muted);}

@@ -28,6 +28,10 @@ impl BartokSettlement {
     /// [16]     buyer P2ID tag
     /// [17..20] buyer P2ID serial number
     /// [21]     note_type (1 = public, 2 = private) for the output notes
+    ///
+    /// NOTE: on-chain oracle gating (verify a Falcon attestation before paying) is deferred.
+    /// Miden 0.14's falcon-sig mechanism only signs the transaction summary, not a standalone
+    /// commitment, so gating will be done by restricting the settlement tx to the oracle account.
     #[note_script]
     fn run(self, _arg: Word) {
         let s = active_note::get_storage();

@@ -1,0 +1,8 @@
+# secret
+.env
+
+# TLSNotary checkout (re-created by ./setup.sh) — do not vendor
+tlsn/
+
+# notarization artifacts
+*.tlsn

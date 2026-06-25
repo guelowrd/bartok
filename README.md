@@ -20,10 +20,21 @@ See **`ARCHITECTURE.md`** for how these three parts compose into one flow.
   payment to the seller and a refund to the buyer (two P2ID notes). Increment 1 (the split) is
   tested green; Falcon-attestation verification is the next increment. See its README.
 
-## Try the UI
+## Try the UI (mock)
 ```bash
 open ux-prototype/index.html
 ```
+
+## Try the UI for real (live pipeline)
+After the setups below (zkTLS + `.env` key + Miden settlement), start the bridge and open it:
+```bash
+node ux-prototype/server.js     # serves the UI + runs the real pipeline per message
+# then open http://localhost:8787
+```
+Type a message: the bridge runs the real model call **inside a zkTLS proof**, the **oracle** derives
+the charge from the proven token usage, and the **Miden** settlement (MockChain) splits the escrow.
+Each reply is the genuine model output with a "✓ verified · paid" chip. (A few seconds per message;
+Miden runs on MockChain, not a live testnet.)
 
 ## Try the zkTLS proof
 ```bash
@@ -55,4 +66,5 @@ A real run: a zkTLS-proven token usage flows through the oracle into the on-chai
 - Oracle (verify the zkTLS proof, derive the charge): **done**, tested
 - Miden settlement, increment 1 (escrow split into seller-pay + buyer-refund): **done**, MockChain test green
 - End-to-end pipeline (zkTLS -> oracle -> settlement): **working** via `./stitch.sh`
+- Live UI (chat in the browser -> real pipeline via `ux-prototype/server.js`): **working** at localhost:8787
 - On-chain oracle gating (Falcon-512 in the note): deferred (Miden 0.14 constraint, see `ARCHITECTURE.md`)

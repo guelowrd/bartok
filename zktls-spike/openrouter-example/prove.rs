@@ -69,11 +69,16 @@ async fn prover<S: AsyncWrite + AsyncRead + Send + Sync + Unpin + 'static>(socke
     let api_key = env::var("OPENROUTER_API_KEY")
         .map_err(|_| anyhow::anyhow!("set OPENROUTER_API_KEY (see zktls-spike/.env.example)"))?;
     let model = env::var("MODEL").unwrap_or_else(|_| "meta-llama/llama-3.1-8b-instruct:free".into());
+    let prompt = env::var("PROMPT")
+        .unwrap_or_else(|_| "In one sentence, what is a zero-knowledge proof?".into());
 
-    // The body we will send. max_tokens is the BARTOK cost ceiling; usage comes back in the response.
-    let body = format!(
-        r#"{{"model":"{model}","max_tokens":64,"messages":[{{"role":"user","content":"In one sentence, what is a zero-knowledge proof?"}}]}}"#
-    );
+    // The body we send. max_tokens is the cost ceiling; usage comes back in the response.
+    let body = serde_json::json!({
+        "model": model,
+        "max_tokens": 256,
+        "messages": [{ "role": "user", "content": prompt }],
+    })
+    .to_string();
 
     // Create a session with the notary.
     let session = Session::new(socket.compat());
@@ -133,6 +138,8 @@ async fn prover<S: AsyncWrite + AsyncRead + Send + Sync + Unpin + 'static>(socke
     let response_body = transcript.responses[0].body.as_ref().unwrap();
     let body_bytes = response_body.content_data();
     info!("Response body:\n{}", String::from_utf8_lossy(&body_bytes));
+    // Persist the raw response so the bridge can extract the reply text for the UI.
+    std::fs::write("openrouter.response.json", &body_bytes)?;
 
     // Commit to the transcript (request + response, parts committed separately).
     let mut builder = TranscriptCommitConfig::builder(prover.transcript());

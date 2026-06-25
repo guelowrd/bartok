@@ -264,20 +264,31 @@
     if(kind==='user'){row.appendChild(bubble);}else{const p=document.createElement('div');p.className='price pending';p.innerHTML='<span class="amt">…</span>';row.appendChild(bubble);row.appendChild(p);row._price=p;}
     $('thread').appendChild(row);$('chat').scrollTop=$('chat').scrollHeight;return row;
   }
-  function sendMsg(){
+  // Real pipeline: the message is run through zkTLS notarize -> oracle -> Miden settlement
+  // by the local bridge (server.js). Takes a few seconds; we show a working state.
+  async function sendMsg(){
     const text=input.value.trim();if(!text)return;
     addRow('user',text);input.value='';input.style.height='auto';state.busy=true;refreshSend();
-    const h=state.helper, maxThis=maxFor(h.mult);
-    const ai=addRow('ai','');ai.querySelector('.bubble').innerHTML='<span class="dots"><span></span><span></span><span></span></span>';
-    ai._price.innerHTML='<span class="amt">up to '+money(maxThis)+'</span>';
-    setTimeout(()=>{
-      const charge=Math.min(maxThis,actualFor(h.mult));
-      ai.querySelector('.bubble').textContent='Replying to: “'+text+'” [mock reply from '+h.name+' at '+TIERS[state.tier].label+' level].';
+    const h=state.helper;
+    const ai=addRow('ai','');
+    ai.querySelector('.bubble').innerHTML='<span class="dots"><span></span><span></span><span></span></span>';
+    ai._price.innerHTML='<span class="amt" style="font-weight:500;color:var(--muted)">working…</span>';
+    try{
+      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:text})});
+      const data=await r.json();
+      if(!r.ok||data.error) throw new Error(data.error||'request failed');
+      const chargeUsd=Math.max(0.01,+(data.charge*0.0002).toFixed(2));
+      ai.querySelector('.bubble').textContent=data.reply;
       ai._price.className='price';
-      ai._price.innerHTML='<span class="amt">&minus;'+money(charge)+'</span><span class="v" title="Tap to check this is real">✓ verified</span>';
-      ai._price.querySelector('.v').onclick=()=>openProof(h.name);
-      setBalance(state.balance-charge);state.spent+=charge;state.replies++;state.busy=false;refreshSend();updateHint();$('chat').scrollTop=$('chat').scrollHeight;
-    },1300);
+      const badge=data.settled?'✓ verified · paid':'✓ verified';
+      ai._price.innerHTML='<span class="amt">&minus;'+money(chargeUsd)+'</span><span class="v" title="Tap to check this is real">'+badge+'</span>';
+      ai._price.querySelector('.v').onclick=()=>openProof(h.name,data.settled);
+      setBalance(state.balance-chargeUsd);state.spent+=chargeUsd;state.replies++;
+    }catch(e){
+      ai.querySelector('.bubble').textContent='Sorry, something went wrong: '+e.message;
+      ai._price.className='price';ai._price.innerHTML='';
+    }
+    state.busy=false;refreshSend();updateHint();$('chat').scrollTop=$('chat').scrollHeight;
   }
 
   $('endBtn').onclick=()=>{
@@ -335,10 +346,10 @@
   $('newChat').onclick=()=>{ renderClasses(); renderFavQuick(); show('request'); };
 
   // friendly "is this real?" reassurance — no numbers, no jargon
-  function openProof(helper){
+  function openProof(helper, settled){
     $('proofText').innerHTML='This answer genuinely came from <b>'+helper+'</b>, the helper you picked. '
-      +'We checked it independently, so it can\'t be faked or swapped for a cheaper bot.<br><br>'
-      +'🔒 Your message and the answer stay private to you.';
+      +'We checked it independently'+(settled?' and settled the payment on Miden':'')+", so it can't be faked "
+      +'or swapped for a cheaper bot.<br><br>🔒 Your message and the answer stay private to you.';
     $('proofModal').classList.remove('hidden');
   }
   function closeProof(){$('proofModal').classList.add('hidden');}

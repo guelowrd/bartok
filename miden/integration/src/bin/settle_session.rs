@@ -184,6 +184,15 @@ async fn main() -> Result<()> {
     let seller_note = (charge > 0).then(|| make_note(charge, &seller_recipient, seller)).transpose()?;
     let buyer_note = (refund > 0).then(|| make_note(refund, &buyer_recipient, buyer)).transpose()?;
 
+    let seller_note_file_b64 = seller_note.as_ref().map(|n| {
+        let file = NoteFile::NoteDetails {
+            details: NoteDetails::new(n.assets().clone(), n.recipient().clone()),
+            after_block_num: 0.into(),
+            tag: Some(NoteTag::with_account_target(seller)),
+        };
+        B64.encode(file.to_bytes())
+    });
+
     // Refund note details for the buyer (bridge -> browser -> consume v2 proposal).
     let refund_note_file_b64 = buyer_note
         .as_ref()
@@ -212,6 +221,7 @@ async fn main() -> Result<()> {
         "charge": charge,
         "refund": refund,
         "refundNoteFileB64": refund_note_file_b64,
+        "sellerNoteFileB64": seller_note_file_b64,
         "joaoProposalId": joao_proposal_id,
         "explorer": format!("https://testnet.midenscan.com/account/{}", operator_multisig.to_hex()),
     });
@@ -255,18 +265,14 @@ async fn consume_as_joao(
             .map_err(|e| anyhow::anyhow!("propose João consume: {e:?}"))?,
     };
 
-    // Execution races the settlement tx's block inclusion: the node rejects the
-    // unauthenticated payment note until the settlement commits. Retry.
-    for attempt in 0..24 {
-        match joao.execute_proposal(&proposal.id).await {
-            Ok(()) => return Ok(proposal.id),
-            Err(e) if attempt < 23 => {
-                eprintln!("João consume not executable yet (attempt {attempt}): {e:?}");
-                joao.sync().await.ok();
-                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-            },
-            Err(e) => return Err(anyhow::anyhow!("execute João consume: {e:?}")),
-        }
-    }
-    unreachable!()
+    // Execute ONCE, after the settlement has had time to land in a block:
+    // execute_proposal pushes a delta first, so retrying a failed execute only
+    // wedges the account behind its own orphaned delta (one-pending rule).
+    // If this single attempt fails, joao_sweep drains it later.
+    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+    joao.sync().await.ok();
+    joao.execute_proposal(&proposal.id)
+        .await
+        .map_err(|e| anyhow::anyhow!("execute João consume: {e:?}"))?;
+    Ok(proposal.id)
 }

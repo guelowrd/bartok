@@ -15,13 +15,31 @@ async fn main() -> Result<()> {
     let mut ids = std::collections::BTreeMap::new();
 
     for (role, json_key) in [("operator", "operatorMultisig"), ("joao", "sellerMultisig")] {
-        let mut client = guardian_role_client(role, GUARDIAN_GRPC).await?;
-        if !client.has_account() {
+        let mut client = guardian_role_client(role, GUARDIAN_GRPC, None).await?;
+        // Recover an existing account for this signer from Bartok-Guardian,
+        // else create one (idempotent across fresh local stores).
+        let recovered = client
+            .recover_by_key()
+            .await
+            .map_err(|e| anyhow::anyhow!("recover_by_key({role}): {e:?}"))?;
+        if let Some(acc) = recovered.first() {
+            let id = miden_multisig_client::AccountId::from_hex(&acc.account_id)?;
+            client
+                .pull_account(id)
+                .await
+                .map_err(|e| anyhow::anyhow!("pull_account({role}): {e:?}"))?;
+        } else {
             let commitment = client.user_commitment();
             client
                 .create_account(1, vec![commitment])
                 .await
                 .map_err(|e| anyhow::anyhow!("create_account({role}): {e:?}"))?;
+            // create_account is LOCAL-only; this pushes the account state to
+            // Bartok-Guardian (configure) so pull/recover work in later sessions.
+            client
+                .register_on_guardian()
+                .await
+                .map_err(|e| anyhow::anyhow!("register_on_guardian({role}): {e:?}"))?;
         }
         let id = client
             .account_id()

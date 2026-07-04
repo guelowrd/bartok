@@ -193,6 +193,7 @@ pub async fn create_basic_faucet_account(
 pub async fn guardian_role_client(
     role: &str,
     guardian_grpc: &str,
+    known_account: Option<miden_client::account::AccountId>,
 ) -> Result<miden_multisig_client::MultisigClient> {
     use miden_client::utils::Serializable;
     use miden_multisig_client::SecretKey as FalconSecretKey;
@@ -217,12 +218,22 @@ pub async fn guardian_role_client(
         sk
     };
 
-    miden_multisig_client::MultisigClient::builder()
+    let mut client = miden_multisig_client::MultisigClient::builder()
         .miden_endpoint(Endpoint::testnet())
         .guardian_endpoint(guardian_grpc)
         .account_dir(&dir)
         .with_secret_key(secret)
         .build()
         .await
-        .map_err(|e| anyhow::anyhow!("multisig client build ({role}): {e:?}"))
+        .map_err(|e| anyhow::anyhow!("multisig client build ({role}): {e:?}"))?;
+
+    // Each session starts with a fresh local store (by SDK design); hydrate
+    // the role's account from Bartok-Guardian when we already know its id.
+    if let Some(id) = known_account {
+        client
+            .pull_account(id)
+            .await
+            .map_err(|e| anyhow::anyhow!("pull_account({role}): {e:?}"))?;
+    }
+    Ok(client)
 }

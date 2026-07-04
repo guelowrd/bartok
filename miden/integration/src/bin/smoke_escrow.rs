@@ -23,6 +23,7 @@ use miden_client::{
 };
 use miden_mast_package::Package;
 use miden_standards::note::P2idNoteStorage;
+use base64::Engine;
 use rand::RngCore;
 
 fn random_word() -> Word {
@@ -58,7 +59,7 @@ async fn main() -> Result<()> {
     let accounts: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string("../accounts.json")?)
             .context("run setup_accounts first")?;
-    let seller = AccountId::from_hex(accounts["seller"].as_str().context("seller missing")?)?;
+    let seller = AccountId::from_hex(accounts["sellerMultisig"].as_str().context("sellerMultisig missing — run setup_multisigs")?)?;
     let faucet = AccountId::from_hex(accounts["faucet"].as_str().context("faucet missing")?)?;
     let operator_tag: u32 = accounts["operatorTag"].as_u64().context("operatorTag missing")? as u32;
 
@@ -100,6 +101,29 @@ async fn main() -> Result<()> {
     let consume_tx = client.submit_new_transaction(buyer.id(), consume_request).await?;
     println!("consume tx: https://testnet.midenscan.com/tx/{}", consume_tx.to_hex());
 
+    // Wait until the minted BART is actually spendable in the local state
+    // (the consume tx must commit before the escrow tx can take assets).
+    let mut funded = false;
+    for _ in 0..24 {
+        client.sync_state().await?;
+        let record = client.get_account(buyer.id()).await?.context("buyer record")?;
+        let balance: u64 = record
+            .vault()
+            .assets()
+            .filter_map(|a| match a {
+                Asset::Fungible(fa) if fa.faucet_id() == faucet => Some(fa.amount().as_u64()),
+                _ => None,
+            })
+            .sum();
+        if balance >= budget {
+            println!("buyer balance ready: {balance}");
+            funded = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+    anyhow::ensure!(funded, "buyer balance never reached {budget}");
+
     // 4. Build the escrow note (same layout as wallet.js / the MockChain test).
     let masp_bytes =
         std::fs::read("../contracts/settlement-note/target/miden/release/bartok-settlement.masp")
@@ -124,12 +148,12 @@ async fn main() -> Result<()> {
         Felt::from(NoteTag::with_account_target(seller)),
         br[0], br[1], br[2], br[3],
         Felt::from(NoteTag::with_account_target(buyer.id())),
-        Felt::from(NoteType::Public),
+        Felt::from(NoteType::Private),
     ])?;
 
     let escrow_note = Note::new(
         NoteAssets::new(vec![Asset::Fungible(FungibleAsset::new(faucet, budget)?)])?,
-        PartialNoteMetadata::new(buyer.id(), NoteType::Public)
+        PartialNoteMetadata::new(buyer.id(), NoteType::Private)
             .with_tag(NoteTag::from(operator_tag)),
         NoteRecipient::new(random_word(), script, storage),
     );
@@ -140,12 +164,12 @@ async fn main() -> Result<()> {
     let escrow_tx = client.submit_new_transaction(buyer.id(), escrow_request).await?;
 
     println!("escrow tx: https://testnet.midenscan.com/tx/{}", escrow_tx.to_hex());
-    println!("escrow note: https://testnet.midenscan.com/note/{}", escrow_note.id().to_hex());
+    println!("escrow note (PRIVATE): {}", escrow_note.id().to_hex());
     println!();
     println!("settle with:");
     println!(
-        "cargo run --release -p integration --bin settle_session -- --note-id {} --charge <N> --buyer {} --seller-serial {} --buyer-serial {}",
-        escrow_note.id().to_hex(),
+        "cargo run --release -p integration --bin settle_session -- --escrow-note-b64 {} --charge <N> --buyer {} --seller-serial {} --buyer-serial {}",
+        base64::engine::general_purpose::STANDARD.encode(miden_client::utils::Serializable::to_bytes(&escrow_note)),
         buyer.id().to_hex(),
         word_csv(seller_serial),
         word_csv(buyer_serial),

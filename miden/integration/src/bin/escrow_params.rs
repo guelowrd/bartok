@@ -59,7 +59,7 @@ fn main() -> Result<()> {
         "buyerRecipient": word_strings(buyer_recipient.digest()),
         "buyerTag": u32::from(NoteTag::with_account_target(buyer)),
         "buyerSerial": word_strings(buyer_serial),
-        "noteType": Felt::from(NoteType::Public).as_canonical_u64().to_string(),
+        "noteType": Felt::from(NoteType::Private).as_canonical_u64().to_string(),
     });
     println!("{}", serde_json::to_string(&out)?);
     Ok(())

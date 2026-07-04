@@ -151,10 +151,8 @@ async fn main() -> Result<()> {
         b.build().context("build settlement request")
     };
 
-    let mut operator = guardian_role_client("operator", guardian_grpc).await?;
-    if operator.account_id() != Some(operator_multisig) {
-        bail!("operator multisig id drift — rerun setup_multisigs");
-    }
+    let mut operator =
+        guardian_role_client("operator", guardian_grpc, Some(operator_multisig)).await?;
 
     let request_bytes = build_request(&[])?.to_bytes();
     let proposal = operator
@@ -201,7 +199,7 @@ async fn main() -> Result<()> {
     // João's payment lands in HIS Guardian multisig via a consume_notes v2 proposal.
     let mut joao_proposal_id = None;
     if let Some(ref note) = seller_note {
-        match consume_as_joao(guardian_grpc, note).await {
+        match consume_as_joao(guardian_grpc, seller, note).await {
             Ok(id) => joao_proposal_id = Some(id),
             Err(e) => eprintln!("warning: João consume proposal failed: {e:#}"),
         }
@@ -221,30 +219,53 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn consume_as_joao(guardian_grpc: &str, payment_note: &Note) -> Result<String> {
-    let mut joao = guardian_role_client("joao", guardian_grpc).await?;
-    // Wait until the settlement tx commits so the note exists on-chain.
-    for attempt in 0..24 {
-        joao.sync().await.ok();
-        let proposal = joao
+async fn consume_as_joao(
+    guardian_grpc: &str,
+    seller: AccountId,
+    payment_note: &Note,
+) -> Result<String> {
+    let mut joao = guardian_role_client("joao", guardian_grpc, Some(seller)).await?;
+    joao.sync().await.ok();
+
+    // One pending candidate per account (Guardian rule): resume an existing
+    // pending consume proposal for this note if present, else push a new one.
+    let existing = joao
+        .list_proposals()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .find(|p| match &p.transaction_type {
+            TransactionType::ConsumeNotes { note_ids, .. } => {
+                note_ids.contains(&payment_note.id())
+            },
+            _ => false,
+        });
+    let proposal = match existing {
+        Some(p) => {
+            eprintln!("resuming pending João consume proposal {}", p.id);
+            p
+        },
+        None => joao
             .propose_transaction(TransactionType::ConsumeNotes {
                 note_ids: vec![payment_note.id()],
                 metadata_version: Some(2),
                 notes: vec![SerializedNote::from_note(payment_note)],
             })
-            .await;
-        match proposal {
-            Ok(p) => {
-                joao.execute_proposal(&p.id)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("execute João consume: {e:?}"))?;
-                return Ok(p.id);
-            },
+            .await
+            .map_err(|e| anyhow::anyhow!("propose João consume: {e:?}"))?,
+    };
+
+    // Execution races the settlement tx's block inclusion: the node rejects the
+    // unauthenticated payment note until the settlement commits. Retry.
+    for attempt in 0..24 {
+        match joao.execute_proposal(&proposal.id).await {
+            Ok(()) => return Ok(proposal.id),
             Err(e) if attempt < 23 => {
-                eprintln!("João consume not ready (attempt {attempt}): {e:?}");
+                eprintln!("João consume not executable yet (attempt {attempt}): {e:?}");
+                joao.sync().await.ok();
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             },
-            Err(e) => return Err(anyhow::anyhow!("propose João consume: {e:?}")),
+            Err(e) => return Err(anyhow::anyhow!("execute João consume: {e:?}")),
         }
     }
     unreachable!()

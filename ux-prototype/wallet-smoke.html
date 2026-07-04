@@ -52,7 +52,7 @@ document.getElementById("escrow").onclick = async () => {
     sessionId = s.sessionId; faucet = s.escrowTemplate.faucet;
     log("session " + sessionId + "; balance: " + (await w.getBalance(faucet)) + " BART");
     log("building + proving escrow note (remote prover, ~1-2 min)…");
-    const { noteId, txId } = await w.fundEscrow(s.escrowTemplate);
+    const { noteB64 } = await w.fundEscrow(s.escrowTemplate);
     log("escrow tx: https://testnet.midenscan.com/tx/" + txId);
     log("escrow note: https://testnet.midenscan.com/note/" + noteId);
     await fetch("/api/session/escrow", { method: "POST", body: JSON.stringify({ sessionId, noteId }) });

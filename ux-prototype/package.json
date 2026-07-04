@@ -8,10 +8,15 @@
     "build:contracts": "cd ../miden/contracts/settlement-note && cargo miden build --release && mkdir -p ../../../ux-prototype/public/packages && cp target/miden/release/bartok*settlement.masp ../../../ux-prototype/public/packages/bartok-settlement.masp"
   },
   "dependencies": {
-    "@miden-sdk/miden-sdk": "0.15.3"
+    "@miden-sdk/miden-sdk": "0.15.3",
+    "@openzeppelin/miden-multisig-client": "file:../../bartok-guardian/packages/miden-multisig-client",
+    "@openzeppelin/guardian-client": "file:../../bartok-guardian/packages/guardian-client"
   },
   "devDependencies": {
     "@miden-sdk/vite-plugin": "0.15.3",
     "vite": "^6.0.0"
+  },
+  "overrides": {
+    "@miden-sdk/miden-sdk": "0.15.3"
   }
 }

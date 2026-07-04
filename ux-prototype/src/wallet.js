@@ -1,180 +1,152 @@
-// BARTOK buyer wallet (vanilla JS, raw @miden-sdk/miden-sdk WASM client).
+// BARTOK buyer wallet — Rita's account is a Guardian MULTISIG (threshold-1
+// Falcon signer + Bartok-Guardian ACK). Backup/recovery come free; every
+// value-moving action is a Guardian-countersigned proposal.
 //
-// Mirrors the Rust reference implementation in
-// miden/integration/src/bin/smoke_escrow.rs: create-or-load a private wallet,
-// absorb BART mints, and build + submit the BartokSettlement escrow note
-// (11-felt storage: sellerRecipient, sellerTag, buyerRecipient, buyerTag,
-// noteType — recipients precomputed server-side by escrow_params).
-import {
-  WasmWebClient,
-  TransactionProver,
-  TransactionRequestBuilder,
-  AccountStorageMode,
-  AccountId,
-  Package,
-  NoteScript,
-  Note,
-  NoteAssets,
-  NoteFile,
-  NoteId,
-  NoteMetadata,
-  NoteRecipient,
-  NoteStorage,
-  NoteTag,
-  NoteType,
-  NoteArray,
-  FeltArray,
-  FungibleAsset,
-  Felt,
-  Word,
-} from "@miden-sdk/miden-sdk";
+// Public surface kept stable for index.html: init(), id(), getBalance(),
+// fund()/waitAndAbsorb() (mint consume), fundEscrow() (custom proposal),
+// absorbNoteFile() (private refund consume).
+import { MidenClient, AuthSecretKey, AccountId } from "@miden-sdk/miden-sdk";
+import { MultisigClient, FalconSigner, AccountInspector } from "@openzeppelin/miden-multisig-client";
 
 const RPC_URL = "https://rpc.testnet.miden.io";
-const PROVER_URL = "https://tx-prover.testnet.miden.io";
-const STORE_NAME = "bartok-buyer";
-const WALLET_KEY = "bartok-buyer-id";
-const MASP_URL = "/packages/bartok-settlement.masp";
-// Numeric wasm AuthScheme discriminant for RpoFalcon512 (the friendly string
-// const is NOT accepted by newWallet — see frontend-template gotcha).
-const AUTH_RPO_FALCON512 = 2;
 
-const randomWord = () =>
-  Word.newFromFelts(
-    Array.from({ length: 4 }, () => new Felt(BigInt(Math.floor(Math.random() * 2 ** 32)))),
-  );
+const STORE_NAME = "bartok-rita";
+const ACCOUNT_KEY = "bartok-rita-account";
+const SIGNER_KEY = "bartok-rita-signer"; // hex of AuthSecretKey.serialize()
+// Bartok-Guardian gRPC (proxied by Vite in dev, tunnelled in prod).
+const GUARDIAN_URL = "http://localhost:3300";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-
-const bytesToB64 = (bytes) => {
-  let bin = "";
-  const CHUNK = 0x8000;
-  for (let i = 0; i < bytes.length; i += CHUNK) {
-    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
-  }
-  return btoa(bin);
-};
+const bytesToHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
+const hexToBytes = (h) => Uint8Array.from(h.match(/.{2}/g).map((x) => parseInt(x, 16)));
+const bytesToB64 = (b) => { let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); };
 const b64ToBytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
+// Guardian allows one pending (non-canonical) delta per account. Back-to-back
+// proposals race that rule; retry on 409 until the prior delta settles.
+async function withPendingRetry(fn, { tries = 20, everyMs = 6000 } = {}) {
+  for (let i = 0; ; i++) {
+    try { return await fn(); }
+    catch (e) {
+      const msg = String(e && e.message || e);
+      if (i < tries && /conflict_pending_delta|non-canonical delta pending/i.test(msg)) {
+        await new Promise((r) => setTimeout(r, everyMs));
+        continue;
+      }
+      throw e;
+    }
+  }
+}
+
 export class BartokWallet {
-  /** @type {WasmWebClient} */ client = null;
-  wallet = null;
-  prover = null;
+  /** @type {MidenClient} */ client = null;
+  /** @type {MultisigClient} */ msClient = null;
+  multisig = null;   // the Multisig account handle
+  signer = null;
 
   async init() {
-    // useWorker:false — required so import + tx apply share one SMT forest.
-    this.client = await WasmWebClient.createClient(
-      RPC_URL, undefined, undefined, STORE_NAME, undefined, false,
-    );
-    this.prover = TransactionProver.newRemoteProver(PROVER_URL);
-    await this.client.syncState();
+    // MidenClient carries the testnet remote prover (defaultProver), which the
+    // multisig client offloads proving to. Reads go through getOrImport (below)
+    // to re-register the account in this client's SMT forest after a multisig
+    // write updates the shared store.
+    this.client = await MidenClient.createTestnet({ storeName: STORE_NAME, proverUrl: "testnet" });
+    await this.client.sync();
 
-    const saved = localStorage.getItem(WALLET_KEY);
-    if (saved) {
-      try {
-        this.wallet = await this.client.getAccount(AccountId.fromHex(saved));
-      } catch (_) { /* stale id for a wiped store */ }
+    // Persistent Falcon signer (never regenerate — that would orphan the account).
+    const savedSigner = localStorage.getItem(SIGNER_KEY);
+    const secret = savedSigner
+      ? AuthSecretKey.deserialize(hexToBytes(savedSigner))
+      : AuthSecretKey.rpoFalconWithRNG();
+    if (!savedSigner) localStorage.setItem(SIGNER_KEY, bytesToHex(secret.serialize()));
+    this.signer = new FalconSigner(secret);
+
+    this.msClient = new MultisigClient(this.client, {
+      guardianEndpoint: GUARDIAN_URL,
+      midenRpcEndpoint: RPC_URL,
+    });
+
+    const savedAccount = localStorage.getItem(ACCOUNT_KEY);
+    if (savedAccount) {
+      this.multisig = await this.msClient.load(savedAccount, this.signer);
+    } else {
+      // Try recovery (same signer, wiped store) before creating a new account.
+      const recovered = await this.msClient.recoverByKey(this.signer).catch(() => []);
+      if (recovered.length) {
+        this.multisig = await this.msClient.load(recovered[0].accountId, this.signer);
+      } else {
+        const guardian = await this.msClient.guardianClient.getPubkey();
+        const guardianCommitment = typeof guardian === "string" ? guardian : guardian.commitment;
+        this.multisig = await this.msClient.create(
+          { threshold: 1, signerCommitments: [this.signer.commitment], guardianCommitment,
+            guardianEnabled: true, storageMode: "private", signatureScheme: "falcon" },
+          this.signer,
+        );
+        await this.multisig.registerOnGuardian();
+      }
+      localStorage.setItem(ACCOUNT_KEY, this.multisig.accountId);
     }
-    if (!this.wallet) {
-      this.wallet = await this.client.newWallet(
-        AccountStorageMode.private(), AUTH_RPO_FALCON512, undefined,
-      );
-      localStorage.setItem(WALLET_KEY, this.wallet.id().toString());
-    }
+    await this.multisig.syncState();
     return this.id();
   }
 
-  id() {
-    return this.wallet.id().toString();
-  }
+  id() { return this.multisig.accountId; }
 
   async getBalance(faucetHex) {
-    const reader = await this.client.accountReader(AccountId.fromHex(this.id()));
-    return await reader.getBalance(AccountId.fromHex(faucetHex));
+    await this.client.sync();
+    // getOrImport re-registers the (multisig-updated) account in this client's
+    // forest; read the local vault directly. NOT multisig.syncState() — its
+    // overwrite guard throws while a just-executed delta is still canonicalizing.
+    const account = await this.client.accounts.getOrImport(this.id());
+    const bal = AccountInspector.fromAccount(account).vaultBalances
+      .find((v) => v.faucetId.toLowerCase() === faucetHex.toLowerCase());
+    return bal ? bal.amount : 0n;
   }
 
-  /** Consume every consumable note for this wallet (mints, refunds). Returns # consumed. */
+  /** Consume every available note (mints, refunds) via a Guardian consume proposal. */
   async absorbNotes() {
-    await this.client.syncState();
-    const consumable = await this.client.getConsumableNotes(AccountId.fromHex(this.id()));
-    if (!consumable.length) return 0;
-    const notes = consumable.map((c) => c.inputNoteRecord().toNote());
-    const request = this.client.newConsumeTransactionRequest(notes);
-    await this.client.submitNewTransactionWithProver(
-      AccountId.fromHex(this.id()), request, this.prover,
-    );
-    await this.client.syncState();
-    return notes.length;
+    await this.client.sync();
+    const available = await this.client.notes.listAvailable({ account: this.id() });
+    if (!available.length) return 0;
+    const ids = available.map((r) => r.id().toString());
+    const proposal = await withPendingRetry(() => this.multisig.createConsumeNotesProposal(ids));
+    await this.multisig.signProposal(proposal.id);
+    await withPendingRetry(() => this.multisig.executeProposal(proposal.id));
+    await this.client.sync();
+    return ids.length;
   }
 
-  /** Import a specific public note from the node by id, then absorb it. */
-  async absorbNoteById(noteIdHex, timeoutMs = 120000) {
-    await this.client.importNoteFile(NoteFile.fromNoteId(NoteId.fromHex(noteIdHex)));
-    return this.waitAndAbsorb(timeoutMs);
-  }
-
-  /** Import a full serialized NoteFile (private-note rail), then absorb it. */
-  async absorbNoteFile(noteFileB64, timeoutMs = 120000) {
-    await this.client.importNoteFile(NoteFile.deserialize(b64ToBytes(noteFileB64)));
-    return this.waitAndAbsorb(timeoutMs);
-  }
-
-  /** Poll until at least one note is absorbed or timeout. Returns # consumed. */
-  async waitAndAbsorb(timeoutMs = 120000, everyMs = 5000) {
+  async waitAndAbsorb(timeoutMs = 180000, everyMs = 6000) {
     const t0 = Date.now();
     while (Date.now() - t0 < timeoutMs) {
-      const n = await this.absorbNotes();
+      const n = await this.absorbNotes().catch(() => 0);
       if (n > 0) return n;
       await sleep(everyMs);
     }
     return 0;
   }
 
+  /** Import a private note file (refund) into the store, then consume it. */
+  async absorbNoteFile(noteFileB64, timeoutMs = 180000) {
+    const { NoteFile } = await import("@miden-sdk/miden-sdk");
+    await this.client.notes.import(NoteFile.deserialize(b64ToBytes(noteFileB64)));
+    return this.waitAndAbsorb(timeoutMs);
+  }
+
   /**
-   * Build and submit the escrow note from the server-provided template
-   * ({sellerRecipient, sellerTag, buyerRecipient, buyerTag, noteType, faucet,
-   * operatorTag, budget} — felts as decimal strings). Returns the note id hex.
+   * Fund the escrow via a Guardian custom proposal. The escrow TransactionRequest
+   * is built in Rust (bridge) and passed as bytes, so this wallet never
+   * constructs SDK Felt/Note objects — that would fork a second @miden-sdk WASM
+   * instance next to the multisig client's and wasm-bindgen rejects cross-instance
+   * values. Deterministic: propose → sign → prepare → submit, all over bytes.
    */
   async fundEscrow(template) {
-    const buf = await fetch(MASP_URL).then((r) => {
-      if (!r.ok) throw new Error(`missing ${MASP_URL} — run: npm run build:contracts`);
-      return r.arrayBuffer();
-    });
-    const pkg = Package.deserialize(new Uint8Array(buf));
-    const noteScript = NoteScript.fromPackage(pkg);
-
-    const felt = (s) => new Felt(BigInt(s));
-    // Order must match the field declaration order in
-    // miden/contracts/settlement-note/src/lib.rs (11 felts).
-    const storageFelts = [
-      ...template.sellerRecipient.map(felt),
-      new Felt(BigInt(template.sellerTag)),
-      ...template.buyerRecipient.map(felt),
-      new Felt(BigInt(template.buyerTag)),
-      felt(template.noteType),
-    ];
-    const recipient = new NoteRecipient(
-      randomWord(), noteScript, new NoteStorage(new FeltArray(storageFelts)),
-    );
-    const metadata = new NoteMetadata(
-      this.wallet.id(), NoteType.Private, new NoteTag(template.operatorTag),
-    );
-    const assets = new NoteAssets([
-      new FungibleAsset(AccountId.fromHex(template.faucet), BigInt(template.budget)),
-    ]);
-    const note = new Note(assets, metadata, recipient);
-    // Capture id + serialized bytes BEFORE the note is moved into the request
-    // (wasm ownership): the bridge needs the full note details — private notes
-    // never publish them on-chain.
-    const noteId = note.id().toString();
-    const noteB64 = bytesToB64(note.serialize());
-
-    const request = new TransactionRequestBuilder()
-      .withOwnOutputNotes(new NoteArray([note]))
-      .build();
-    await this.client.syncState();
-    const txId = await this.client.submitNewTransactionWithProver(
-      AccountId.fromHex(this.id()), request, this.prover,
-    );
-    return { noteId, noteB64, txId: txId.toHex() };
+    const requestBytes = b64ToBytes(template.requestB64);
+    const proposal = await withPendingRetry(() =>
+      this.multisig.createCustomProposal(requestBytes, "bartok_escrow"));
+    await this.multisig.signProposal(proposal.id);
+    const advice = await this.multisig.prepareCustomExecution(proposal.id, requestBytes);
+    await withPendingRetry(() => this.multisig.submitCustomFromBytes(requestBytes, advice));
+    // The note id lives in the note bytes the bridge already holds; return them.
+    return { noteB64: template.noteB64 };
   }
 }

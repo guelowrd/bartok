@@ -271,8 +271,8 @@
       if(bal!==null && bal < BigInt(state.budget)) throw new Error('You need '+units(state.budget)+', hit "Get BART" first.');
       $('matchTitle').innerHTML='Locking your<br>budget…';
       $('matchSub').textContent='Escrowing '+units(state.budget)+' on Miden testnet (proving in your browser via the remote prover, ~1-2 min).';
-      const {noteId,noteB64}=await w.fundEscrow(s.escrowTemplate);
-      await fetch('/api/session/escrow',{method:'POST',body:JSON.stringify({sessionId:state.sessionId,noteId,noteB64})});
+      const {noteB64}=await w.fundEscrow(s.escrowTemplate);
+      await fetch('/api/session/escrow',{method:'POST',body:JSON.stringify({sessionId:state.sessionId,noteB64})});
       state.escrowNoteId=noteId;
       await refreshBalance();
       enterChat();

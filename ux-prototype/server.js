@@ -196,29 +196,26 @@ const server = http.createServer(async (req, res) => {
     const { buyerId, tier = 'basic' } = JSON.parse(await readBody(req) || '{}');
     if (!buyerId) return json(res, 400, { error: 'missing buyerId' });
     if (!TIERS[tier]) return json(res, 400, { error: 'unknown tier' });
-    const p = await runMiden('escrow_params',
-      ['--seller', ACCOUNTS.sellerMultisig, '--buyer', buyerId], 30000);
+    const p = await runMiden('build_escrow',
+      ['--buyer', buyerId, '--budget', String(ESCROW_BUDGET)], 60000);
     const params = lastJson(p.out);
-    if (!params) return json(res, 500, { error: 'escrow_params failed', detail: p.out.slice(-400) });
+    if (!params) return json(res, 500, { error: 'build_escrow failed', detail: p.out.slice(-400) });
     const sessionId = crypto.randomUUID();
     sessions.set(sessionId, { buyerId, tier, params, escrowNoteId: null,
       charges: [], settled: false, createdAt: Date.now() });
     console.log(`[session] ${sessionId} buyer=${buyerId} tier=${tier}`);
     json(res, 200, { sessionId, escrowTemplate: {
-      sellerRecipient: params.sellerRecipient, sellerTag: params.sellerTag,
-      buyerRecipient: params.buyerRecipient, buyerTag: params.buyerTag,
-      noteType: params.noteType, faucet: ACCOUNTS.faucet,
-      operatorTag: ACCOUNTS.operatorTag, budget: ESCROW_BUDGET,
+      requestB64: params.requestB64, noteB64: params.noteB64,
+      faucet: ACCOUNTS.faucet, budget: ESCROW_BUDGET,
     } });
     return;
   }
 
   if (req.method === 'POST' && req.url === '/api/session/escrow') {
-    const { sessionId, noteId, noteB64 } = JSON.parse(await readBody(req) || '{}');
+    const { sessionId, noteB64 } = JSON.parse(await readBody(req) || '{}');
     const s = sessions.get(sessionId);
     if (!s) return json(res, 404, { error: 'unknown session' });
     if (!noteB64) return json(res, 400, { error: 'missing noteB64 (private escrow needs full note details)' });
-    s.escrowNoteId = noteId;
     s.escrowNoteB64 = noteB64;
     console.log(`[session] ${sessionId} escrow=${noteId}`);
     json(res, 200, { ok: true, budget: ESCROW_BUDGET });

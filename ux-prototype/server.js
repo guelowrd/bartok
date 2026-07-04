@@ -130,15 +130,24 @@ async function runAnswer(prompt, tier, onStage) {
     throw new Error(`verified model mismatch: paid for ${model}, proof says ${oracle.model}`);
   }
 
-  // reply text from the captured response (display only — not part of the proof)
-  let reply = '(no text returned)';
+  // reply text from the captured response (display only — not part of the proof).
+  // Reasoning models return their thinking in `reasoning`; NEVER show that as
+  // the answer — pass it separately so the UI can tuck it behind a toggle.
+  let reply = '';
+  let reasoning = null;
   try {
     const resp = JSON.parse(fs.readFileSync(path.join(TLSN, 'openrouter.response.json'), 'utf8'));
     const msg = resp.choices && resp.choices[0] && resp.choices[0].message;
-    reply = (msg && (msg.content || msg.reasoning)) || reply;
+    reply = (msg && msg.content) || '';
+    reasoning = (msg && msg.reasoning) || null;
   } catch (_) {}
+  if (!reply) {
+    reply = reasoning
+      ? '(The model spent its whole reply budget on internal reasoning. Ask again, or ask for a shorter answer.)'
+      : '(no text returned)';
+  }
 
-  return { reply, model: oracle.model, tier, tokens: oracle.total_tokens, charge: oracle.charge };
+  return { reply, reasoning, model: oracle.model, tier, tokens: oracle.total_tokens, charge: oracle.charge };
 }
 
 // ---- helpers ----------------------------------------------------------------
@@ -241,7 +250,7 @@ const server = http.createServer(async (req, res) => {
           tokens: result.tokens, charge: result.charge, chargeUsd: usd(result.charge) });
         const totalCharge = spent + result.charge;
         console.log(`[chat] model=${result.model} tokens=${result.tokens} charge=${result.charge}`);
-        emit({ type: 'done', reply: result.reply, model: result.model, tier: msgTier,
+        emit({ type: 'done', reply: result.reply, reasoning: result.reasoning, model: result.model, tier: msgTier,
           tokens: result.tokens, charge: result.charge, chargeUsd: usd(result.charge),
           totalCharge, remaining: ESCROW_BUDGET - totalCharge });
       } finally {

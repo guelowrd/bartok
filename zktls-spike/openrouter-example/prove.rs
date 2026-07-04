@@ -72,10 +72,12 @@ async fn prover<S: AsyncWrite + AsyncRead + Send + Sync + Unpin + 'static>(socke
     let prompt = env::var("PROMPT")
         .unwrap_or_else(|_| "In one sentence, what is a zero-knowledge proof?".into());
 
-    // The body we send. max_tokens is the cost ceiling; usage comes back in the response.
+    // The body we send. max_tokens is the cost ceiling; usage comes back in the
+    // response. 1024 leaves room for reasoning models that think before they
+    // answer (MAX_RECV_DATA is 64 KiB, so the transcript has ample headroom).
     let body = serde_json::json!({
         "model": model,
-        "max_tokens": 256,
+        "max_tokens": 1024,
         "messages": [{ "role": "user", "content": prompt }],
     })
     .to_string();

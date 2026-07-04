@@ -57,6 +57,9 @@
   .dots span{display:inline-block;width:7px;height:7px;margin:0 1px;background:var(--ink);animation:b 1.2s infinite;}
   .dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}@keyframes b{0%,60%,100%{opacity:.25}30%{opacity:1}}
   .bubble .stage{font-size:13px;color:var(--muted);margin-right:8px;font-weight:500;}
+  .bubble details.reason{margin-top:9px;border-top:2px dashed var(--muted);padding-top:7px;font-size:12px;color:var(--muted);}
+  .bubble details.reason summary{cursor:pointer;font-weight:700;font-family:var(--f-mono);font-size:11px;}
+  .bubble .rbody{white-space:pre-wrap;margin-top:6px;}
   /* rate */
   .ratestars{font-size:46px;text-align:center;margin:10px 0;cursor:pointer;letter-spacing:6px;}
   .ratestars span{color:transparent;-webkit-text-stroke:2px var(--ink);transition:color .08s;}
@@ -88,7 +91,7 @@
     <p class="sub">Pick a level. Every reply is priced per token and cryptographically verified.</p>
     <div class="classes" id="classes"></div>
     <button class="btn btn--block" id="findBtn">Find a helper</button>
-    <p class="sub" id="findNote" style="font-size:12px;margin-top:12px;">Starting a session locks a 25,000 Ƃ BART budget in a Miden testnet escrow, like a ride-hailing card hold. Whatever you don't spend comes straight back when you end the chat.</p>
+    <p class="sub" id="findNote" style="font-size:12px;margin-top:12px;">Starting a session locks a 25,000 Ƃ budget in a Miden testnet escrow, like a ride-hailing card hold. Whatever you don't spend comes straight back when you end the chat.</p>
   </div>
 </div>
 
@@ -211,7 +214,7 @@
     try{
       if(state.faucet){
         const b=await w.getBalance(state.faucet);
-        $('bal').textContent=units(b)+' BART';
+        $('bal').textContent=units(b);
         $('bal').classList.toggle('low', b < 25000n);
         $('fundBtn').classList.toggle('hidden', b >= 25000n);
         return b;
@@ -265,9 +268,9 @@
       state.sessionId=s.sessionId; state.faucet=s.escrowTemplate.faucet;
       state.budget=s.escrowTemplate.budget; state.remaining=state.budget;
       const bal=await refreshBalance();
-      if(bal!==null && bal < BigInt(state.budget)) throw new Error('You need '+units(state.budget)+' BART — hit "Get BART" first.');
+      if(bal!==null && bal < BigInt(state.budget)) throw new Error('You need '+units(state.budget)+', hit "Get BART" first.');
       $('matchTitle').innerHTML='Locking your<br>budget…';
-      $('matchSub').textContent='Escrowing '+units(state.budget)+' BART on Miden testnet (proving in your browser via the remote prover, ~1-2 min).';
+      $('matchSub').textContent='Escrowing '+units(state.budget)+' on Miden testnet (proving in your browser via the remote prover, ~1-2 min).';
       const {noteId}=await w.fundEscrow(s.escrowTemplate);
       await fetch('/api/session/escrow',{method:'POST',body:JSON.stringify({sessionId:state.sessionId,noteId})});
       state.escrowNoteId=noteId;
@@ -285,7 +288,7 @@
     $('dbAvatar').textContent=JOAO.emoji; $('dbName').textContent=JOAO.name;
     $('dbBudget').textContent='budget '+units(state.remaining);
     $('thread').innerHTML='';
-    addRow('ai-sys','Connected to '+JOAO.name+' '+JOAO.emoji+'. Every reply is priced per token and its model is cryptographically verified. Escrow: '+units(state.budget)+' BART.');
+    addRow('ai-sys','Connected to '+JOAO.name+' '+JOAO.emoji+'. Every reply is priced per token and its model is cryptographically verified. Escrow: '+units(state.budget)+'.');
     updateHint(); refreshSend(); show('chat'); $('input').focus();
   }
   $('seg').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('seg').querySelectorAll('button').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');state.tier=b.dataset.tier;updateHint();});
@@ -343,6 +346,12 @@
       ai.querySelector('.bubble').textContent='';
       if(isBoost){const tag=document.createElement('span');tag.className='whotag';tag.textContent='🧠 GENIUS TAKE';ai.querySelector('.bubble').appendChild(tag);}
       ai.querySelector('.bubble').append(document.createTextNode(data.reply));
+      if(data.reasoning){
+        const det=document.createElement('details');det.className='reason';
+        const sum=document.createElement('summary');sum.textContent='See reasoning';det.appendChild(sum);
+        const body=document.createElement('div');body.className='rbody';body.textContent=data.reasoning;det.appendChild(body);
+        ai.querySelector('.bubble').appendChild(det);
+      }
       ai._price.className='price';
       ai._price.innerHTML='<span class="amt">&minus;'+units(data.charge)+' <span style="color:var(--muted)">≈ '+usd(data.charge)+'</span></span>'
         +'<span class="v" title="Tap: what does verified mean?">✓ verified</span>'

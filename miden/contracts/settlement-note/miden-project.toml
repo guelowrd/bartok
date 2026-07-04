@@ -1,0 +1,12 @@
+[package]
+name = "bartok-settlement"
+version = "0.1.0"
+
+[lib]
+kind = "note"
+# Notes export a package-derived interface (`miden-<package>`), matching the `#[note]` macro.
+namespace = "miden:bartok-settlement/miden-bartok-settlement@0.1.0"
+
+[dependencies]
+miden-core = "*"
+miden-protocol = "*"

@@ -53,7 +53,7 @@
 <div class="wrap">
 
   <div class="toprow">
-    <div class="card stat"><div class="k">Earned today</div><div class="v" id="earned">$0.00</div></div>
+    <div class="card stat"><div class="k">Earned today</div><div class="v" id="earned">0 ⬡</div></div>
     <div class="card stat"><div class="k">Replies served</div><div class="v" id="served">0</div></div>
     <div class="card stat"><div class="k">Reputation</div><div class="v"><span class="stars">★</span> 4.6</div></div>
   </div>
@@ -66,21 +66,17 @@
   <h2>What you offer</h2>
   <div class="card" id="offers">
     <div class="offer" data-tier="basic">
-      <div><div class="name">Basic</div><div class="desc">fast, simple replies</div></div>
-      <div class="offer-right"><div class="rate">$ <input type="number" step="0.001" value="0.018"><span class="muted">/reply max</span></div><div class="sw on"><span class="knob"></span></div></div>
-    </div>
-    <div class="offer" data-tier="smart">
-      <div><div class="name">Smart</div><div class="desc">balanced, the everyday pick</div></div>
-      <div class="offer-right"><div class="rate">$ <input type="number" step="0.001" value="0.065"><span class="compete">cheaper than 60%</span></div><div class="sw on"><span class="knob"></span></div></div>
+      <div><div class="name">Basic</div><div class="desc" id="basicModel">fast, simple replies</div></div>
+      <div class="offer-right"><div class="rate"><b id="basicRate">1 ⬡</b><span class="muted">/token</span></div></div>
     </div>
     <div class="offer" data-tier="genius">
-      <div><div class="name">Genius</div><div class="desc">most capable, hard asks</div></div>
-      <div class="offer-right"><div class="rate">$ <input type="number" step="0.001" value="0.240"><span class="muted">/reply max</span></div><div class="sw"><span class="knob"></span></div></div>
+      <div><div class="name">Genius</div><div class="desc" id="geniusModel">most capable, hard asks</div></div>
+      <div class="offer-right"><div class="rate"><b id="geniusRate">7 ⬡</b><span class="muted">/token</span></div></div>
     </div>
   </div>
 
   <h2>Live jobs</h2>
-  <div class="card"><div class="feed" id="feed"><div class="muted" id="feedEmpty">Go online to start receiving jobs from the network.</div></div></div>
+  <div class="card"><div class="feed" id="feed"><div class="muted" id="feedEmpty">Waiting for live jobs from the BARTOK bridge…</div></div></div>
 
   <h2>Recent feedback</h2>
   <div class="card">
@@ -92,54 +88,61 @@
 
   <h2>Earnings</h2>
   <div class="card earnrow">
-    <div>Available to withdraw: <b id="avail">$0.00</b><div class="muted" style="font-size:12px;">settled to your Miden wallet</div></div>
+    <div>Available to withdraw: <b id="avail">0 ⬡</b><div class="muted" style="font-size:12px;">settled to your Miden wallet</div></div>
     <button class="btn btn--cobalt">Withdraw</button>
   </div>
 
 </div>
 <script>
-  const TIER_RATE={basic:0.018,smart:0.065,genius:0.240};
-  let online=false, earned=0, served=0, timer=null;
+  // Live feed from the BARTOK bridge (server.js SSE). No mock jobs: every row
+  // is a real zkTLS-verified reply or a real Miden settlement.
   const $=id=>document.getElementById(id);
-  const money=n=>'$'+n.toFixed(2);
+  const units=n=>Number(n).toLocaleString()+' ⬡';
+  const usd=n=>'$'+n.toFixed(2);
+  let earned=0, served=0, settledTotal=0;
 
-  document.querySelectorAll('#offers .sw').forEach(sw=>sw.addEventListener('click',()=>sw.classList.toggle('on')));
+  function addRow(feedId,html,maxRows){
+    const row=document.createElement('div');row.className='job';row.innerHTML=html;
+    const feed=$(feedId); feed.insertBefore(row,feed.firstChild);
+    while(feed.children.length>maxRows) feed.removeChild(feed.lastChild);
+    return row;
+  }
+  function renderStats(){
+    $('earned').textContent=units(earned);
+    $('served').textContent=served;
+    $('avail').textContent=units(settledTotal);
+  }
 
-  $('toggle').addEventListener('click',()=>{
-    online=!online;
-    $('toggle').classList.toggle('on',online);
-    $('statusTxt').textContent=online?'Online':'Offline';
-    if(online){ $('feedEmpty')?.remove(); scheduleJob(); }
-    else if(timer){ clearTimeout(timer); timer=null; }
+  const es=new EventSource('/api/seller/events');
+  es.addEventListener('open',()=>{ $('statusTxt').textContent='Online'; $('toggle').classList.add('on'); });
+  es.addEventListener('error',()=>{ $('statusTxt').textContent='Reconnecting…'; });
+  es.addEventListener('snapshot',e=>{
+    const d=JSON.parse(e.data);
+    earned=d.earned; served=d.replies; settledTotal=d.earned; renderStats();
+    if(d.tiers){
+      $('basicModel').textContent=d.tiers.basic.model;
+      $('geniusModel').textContent=d.tiers.genius.model;
+      $('basicRate').textContent=d.tiers.basic.pricePerToken+' ⬡';
+      $('geniusRate').textContent=d.tiers.genius.pricePerToken+' ⬡';
+    }
   });
-
-  function activeTiers(){
-    return Array.from(document.querySelectorAll('#offers .offer'))
-      .filter(o=>o.querySelector('.sw').classList.contains('on')).map(o=>o.dataset.tier);
-  }
-  function scheduleJob(){ timer=setTimeout(()=>{ if(online){ addJob(); scheduleJob(); } }, 1600+Math.random()*2600); }
-  function addJob(){
-    const tiers=activeTiers(); if(!tiers.length) return;
-    const tier=tiers[Math.floor(Math.random()*tiers.length)];
-    const rate=parseFloat($('offers').querySelector('.offer[data-tier="'+tier+'"] input').value)||TIER_RATE[tier];
-    const amt=+Math.max(0.005,rate*(0.5+Math.random()*0.55)).toFixed(3);
-    earned+=amt; served+=1;
-    $('earned').textContent=money(earned); $('served').textContent=served; $('avail').textContent=money(earned);
-    const row=document.createElement('div');row.className='job';
-    row.innerHTML='<div>A <b>'+tier[0].toUpperCase()+tier.slice(1)+'</b> reply <span class="meta">· just now</span><span class="v">✓ verified &amp; settled</span></div><div class="earn">+'+money(amt)+'</div>';
-    const feed=$('feed'); feed.insertBefore(row,feed.firstChild);
-    while(feed.children.length>12) feed.removeChild(feed.lastChild);
-    if(Math.random()<0.45) addFeedback();
-  }
-  const POS=['Fast','Helpful','Accurate','Great value','Clear'];
-  function addFeedback(){
-    const score=Math.random()<0.8?5.0:4.0;
-    const tag=POS[Math.floor(Math.random()*POS.length)];
-    const row=document.createElement('div');row.className='job';
-    row.innerHTML='<div>⭐ '+score.toFixed(1)+' <span class="meta">· “'+tag+'”</span></div><div class="meta">just now</div>';
-    const fb=$('feedback'); fb.insertBefore(row,fb.firstChild);
-    while(fb.children.length>10) fb.removeChild(fb.lastChild);
-  }
+  es.addEventListener('job_started',e=>{
+    const d=JSON.parse(e.data);
+    $('feedEmpty')?.remove();
+    const row=addRow('feed','<div>A <b>'+d.tier+'</b> reply is being generated <span class="meta">· '+d.model+'</span></div><div class="meta">working…</div>',12);
+    row.id='job-live';
+  });
+  es.addEventListener('job_done',e=>{
+    const d=JSON.parse(e.data);
+    document.getElementById('job-live')?.remove();
+    addRow('feed','<div>A <b>'+d.tier+'</b> reply <span class="meta">· '+d.model+' · '+d.tokens+' tokens</span><span class="v">✓ verified</span></div><div class="earn">+'+units(d.charge)+'</div>',12);
+    earned+=d.charge; served+=1; renderStats();
+  });
+  es.addEventListener('session_settled',e=>{
+    const d=JSON.parse(e.data);
+    addRow('feed','<div>Session settled on Miden <span class="meta">· <a href="'+d.explorer+'" target="_blank" style="color:var(--cobalt);font-weight:700;">view tx ↗</a></span><span class="v">✓ paid</span></div><div class="earn">+'+units(d.charge)+' '+'</div>',12);
+    renderStats();
+  });
 </script>
 </body>
 </html>

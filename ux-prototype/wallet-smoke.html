@@ -1,0 +1,65 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>BARTOK wallet smoke</title>
+<style>body{font:14px/1.5 monospace;padding:2rem;max-width:720px}button{margin:.3rem .5rem .3rem 0;padding:.4rem .8rem}#log{white-space:pre-wrap;background:#f4f4f4;padding:1rem;margin-top:1rem;min-height:8rem}</style>
+</head>
+<body>
+<h2>BARTOK buyer-wallet smoke test</h2>
+<div>
+  <button id="init">1. init wallet</button>
+  <button id="fund">2. get BART</button>
+  <button id="escrow">3. fund escrow</button>
+</div>
+<div id="log">ready.</div>
+<script type="module">
+const log = (m) => { document.getElementById("log").textContent += "\n" + m; console.log("[smoke]", m); };
+window.addEventListener("error", (e) => log("WINDOW ERROR: " + e.message));
+window.addEventListener("unhandledrejection", (e) => log("UNHANDLED: " + e.reason));
+log("loading SDK module (wasm ~15MB, first load can take a while)…");
+let BartokWallet;
+try {
+  ({ BartokWallet } = await import("/src/wallet.js"));
+  log("SDK module loaded ✓");
+} catch (e) {
+  log("MODULE ERROR: " + e);
+  throw e;
+}
+const w = new BartokWallet();
+window.w = w;  // console access for driving/debugging
+let faucet = null, sessionId = null;
+
+document.getElementById("init").onclick = async () => {
+  try {
+    log("initializing client (wasm)…");
+    const id = await w.init();
+    log("wallet: " + id);
+  } catch (e) { log("ERROR: " + e); }
+};
+document.getElementById("fund").onclick = async () => {
+  try {
+    log("requesting BART mint…");
+    const r = await fetch("/api/faucet/fund", { method: "POST", body: JSON.stringify({ buyerId: w.id() }) }).then(r => r.json());
+    log("mint tx: " + (r.explorer || JSON.stringify(r)));
+    log("waiting for mint note + absorbing…");
+    const n = await w.waitAndAbsorb();
+    log("absorbed " + n + " note(s)");
+  } catch (e) { log("ERROR: " + e); }
+};
+document.getElementById("escrow").onclick = async () => {
+  try {
+    log("starting session…");
+    const s = await fetch("/api/session/start", { method: "POST", body: JSON.stringify({ buyerId: w.id() }) }).then(r => r.json());
+    sessionId = s.sessionId; faucet = s.escrowTemplate.faucet;
+    log("session " + sessionId + "; balance: " + (await w.getBalance(faucet)) + " BART");
+    log("building + proving escrow note (remote prover, ~1-2 min)…");
+    const { noteId, txId } = await w.fundEscrow(s.escrowTemplate);
+    log("escrow tx: https://testnet.midenscan.com/tx/" + txId);
+    log("escrow note: https://testnet.midenscan.com/note/" + noteId);
+    await fetch("/api/session/escrow", { method: "POST", body: JSON.stringify({ sessionId, noteId }) });
+    log("registered with server ✓ — session is chat-ready");
+    log("balance now: " + (await w.getBalance(faucet)) + " BART");
+  } catch (e) { log("ERROR: " + e); }
+};
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+{
+  "name": "bartok-ux",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:contracts": "cd ../miden/contracts/settlement-note && cargo miden build --release && mkdir -p ../../../ux-prototype/public/packages && cp target/miden/release/bartok*settlement.masp ../../../ux-prototype/public/packages/bartok-settlement.masp"
+  },
+  "dependencies": {
+    "@miden-sdk/miden-sdk": "0.15.3"
+  },
+  "devDependencies": {
+    "@miden-sdk/vite-plugin": "0.15.3",
+    "vite": "^6.0.0"
+  }
+}

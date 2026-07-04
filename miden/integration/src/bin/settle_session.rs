@@ -107,15 +107,9 @@ async fn main() -> Result<()> {
     }
     let refund = budget - charge;
 
-    // The output notes' type comes from the escrow storage itself (felt #10:
-    // 1 = public, 2 = private) so this bin needs no extra flag.
-    let storage_items = escrow_note.recipient().storage().items().to_vec();
-    let note_type_felt = storage_items.get(10).copied().context("escrow storage too short")?;
-    let out_note_type = if note_type_felt.as_canonical_u64() == 2 {
-        NoteType::Private
-    } else {
-        NoteType::Public
-    };
+    // Output notes inherit the escrow note's visibility (the contract reads it
+    // from storage; the escrow metadata is authoritative and needs no magic felt).
+    let out_note_type = escrow_note.metadata().note_type();
 
     // Reconstruct the P2ID recipients the escrow storage committed to.
     let seller_recipient = P2idNoteStorage::new(seller).into_recipient(seller_serial);

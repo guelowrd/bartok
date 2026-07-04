@@ -12,7 +12,7 @@ Bartok-Guardian = dedicated clone `~/Code/bartok-guardian` (branch `bartok`, por
 - [x] **P0 Bartok-Guardian** up on testnet, /pubkey stable.
 - [x] **P1 operator + João multisigs**: settlement via `bartok_settle` custom proposal (propose→Guardian ACK→advice-inject→submit). João's payment consumed into HIS multisig via consume_notes v2, DECOUPLED as a background reconcile (off Rita's critical path; joao_sweep drains stuck queues). Verified on testnet.
 - [x] **P2 private notes**: escrow/payment/refund all NoteType::Private; browser↔bridge↔Rust handoff via serialized Note/NoteFile bytes (no node import-by-id).
-- [x] **P3 Rita = Guardian multisig** (CORE verified): persistent Falcon signer (AuthSecretKey serialize→localStorage), create-or-recover account, mint-consume + escrow custom proposal all Guardian-countersigned. Escrow funds a private 25,000 BART note, balance debits to exactly 25000 on testnet. Refund-consume: final verification in progress.
+- [x] **P3 Rita = Guardian multisig** (VERIFIED): persistent Falcon signer (AuthSecretKey serialize→localStorage), create-or-recover account, mint-consume + escrow custom proposal + refund-consume all Guardian-countersigned. FULL CYCLE verified on testnet: 30000 → escrow 25000 → settle → refund 25000 → 30000, ledger exact.
 
 Accounts (this run): Rita `0x7495ed…`, operator `0x3edc50…`, João `0xad383b…`, BART faucet `0x7d6d02…`. All in miden/accounts.json.
 

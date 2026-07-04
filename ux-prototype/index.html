@@ -213,6 +213,8 @@
 
 <script type="module">
   import { BartokWallet } from "/src/wallet.js";
+  const BACKEND = import.meta.env.VITE_BARTOK_BACKEND || "";
+  const api = p => BACKEND + p;
 
   // João — the single real seller. His two tiers are two real models; every
   // reply's model identity comes from the zkTLS proof, not from this UI.
@@ -239,7 +241,7 @@
   window.w=w; // console access
   let walletReady=(async()=>{
     try{
-      const cfg=await fetch('/api/config').then(r=>r.json());
+      const cfg=await fetch(api('/api/config')).then(r=>r.json());
       state.faucet=cfg.faucet;
       USD_PER_BARTOK=cfg.usdPerBartok; ANON_CAP=cfg.anonSpendCap;
       HOLDS={basic:cfg.tiers.basic.hold, genius:cfg.tiers.genius.hold};
@@ -250,7 +252,7 @@
     }catch(e){ $('bal').textContent='wallet error'; console.error(e); }
   })();
   async function refreshAccount(){
-    try{ state.account=await fetch('/api/account?buyerId='+w.id()).then(r=>r.json()); }
+    try{ state.account=await fetch(api('/api/account?buyerId=')+w.id()).then(r=>r.json()); }
     catch(_){ state.account={hasAccount:false, spent:0, redeemed:false}; }
   }
   async function refreshBalance(){
@@ -280,7 +282,7 @@
     $('redeemBtn').disabled=true; $('buyMsg').textContent='Redeeming…';
     try{
       await walletReady;
-      const r=await fetch('/api/credits/redeem',{method:'POST',body:JSON.stringify({buyerId:w.id(),code})}).then(r=>r.json());
+      const r=await fetch(api('/api/credits/redeem'),{method:'POST',body:JSON.stringify({buyerId:w.id(),code})}).then(r=>r.json());
       if(r.error){
         const msg={bad_code:'That code isn\'t valid.',already_redeemed:'You\'ve already used a code.'}[r.error]||r.error;
         $('buyMsg').textContent=msg; $('redeemBtn').disabled=false; return;
@@ -304,7 +306,7 @@
     if(!password){ $('authMsg').textContent='Pick a password.'; return; }
     $('authGo').disabled=true; $('authMsg').textContent='Creating…';
     try{
-      const r=await fetch('/api/auth/register',{method:'POST',body:JSON.stringify({buyerId:w.id(),name,password})}).then(r=>r.json());
+      const r=await fetch(api('/api/auth/register'),{method:'POST',body:JSON.stringify({buyerId:w.id(),name,password})}).then(r=>r.json());
       if(r.error){ $('authMsg').textContent=r.error==='exists'?'You already have an account.':r.error; $('authGo').disabled=false; return; }
       await refreshAccount();
       closeAuth();
@@ -332,7 +334,7 @@
     $('matchTitle').innerHTML='Finding<br>your helper…';
     $('matchSub').textContent='Matching you with João…';
     try{
-      const s=await fetch('/api/session/start',{method:'POST',body:JSON.stringify({buyerId:w.id(),tier:state.tier})}).then(r=>r.json());
+      const s=await fetch(api('/api/session/start'),{method:'POST',body:JSON.stringify({buyerId:w.id(),tier:state.tier})}).then(r=>r.json());
       if(s.error==='account_required'){ show('request'); openAuth('Create a free account to unlock the Genius brain.'); return; }
       if(s.error) throw new Error(s.error);
       state.sessionId=s.sessionId; state.faucet=s.escrowTemplate.faucet;
@@ -342,7 +344,7 @@
       $('matchTitle').innerHTML='Setting aside<br>your credits…';
       $('matchSub').textContent='Holding '+units(state.budget)+' for this chat. The rest comes back when you finish. (Securing it takes ~1-2 min.)';
       const {noteB64}=await w.fundEscrow(s.escrowTemplate);
-      await fetch('/api/session/escrow',{method:'POST',body:JSON.stringify({sessionId:state.sessionId,noteB64})});
+      await fetch(api('/api/session/escrow'),{method:'POST',body:JSON.stringify({sessionId:state.sessionId,noteB64})});
       await refreshBalance();
       enterChat();
     }catch(e){
@@ -397,7 +399,7 @@
     setStage(STAGE_LABELS.answer);
     ai._price.innerHTML='<span class="amt" style="font-weight:500;color:var(--muted)">working…</span>';
     try{
-      const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:state.sessionId,prompt:text,tier})});
+      const r=await fetch(api('/api/chat'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:state.sessionId,prompt:text,tier})});
       if(!r.ok||!r.body) throw new Error('request failed');
       const reader=r.body.getReader(), dec=new TextDecoder();
       let buf='', data=null;
@@ -488,7 +490,7 @@
       +'<div class="rline" style="color:var(--muted)">Paying João for what you used and returning the rest. ~30-60s.</div>';
     show('receipt');
     try{
-      const r=await fetch('/api/session/end',{method:'POST',body:JSON.stringify({sessionId:state.sessionId})});
+      const r=await fetch(api('/api/session/end'),{method:'POST',body:JSON.stringify({sessionId:state.sessionId})});
       const lines=(await r.text()).trim().split('\n');
       const data=JSON.parse(lines[lines.length-1]);
       if(data.error) throw new Error(data.error);

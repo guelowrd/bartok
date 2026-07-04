@@ -16,6 +16,7 @@ const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const httpProxy = require('http');
 
 const STATIC = __dirname;
 const ROOT = path.resolve(__dirname, '..');
@@ -221,7 +222,30 @@ function recordSpend(walletId, amount) {
 }
 
 // ---- HTTP server ------------------------------------------------------------
+const GUARDIAN_ORIGIN = { host: 'localhost', port: 3300 };
+
 const server = http.createServer(async (req, res) => {
+  // CORS for the (cross-origin) hosted buyer app. Permissive: this backend
+  // holds only testnet funds; tighten to the Vercel origin for a real launch.
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'content-type,x-pubkey,x-signature,x-timestamp');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+
+  // Proxy /guardian/* -> Bartok-Guardian :3300 so a single tunnel to this bridge
+  // serves both the app API and Guardian (prod). In dev, Vite proxies instead.
+  if (req.url.startsWith('/guardian/') || req.url === '/guardian') {
+    const gpath = req.url.replace(/^\/guardian/, '') || '/';
+    const preq = httpProxy.request({ ...GUARDIAN_ORIGIN, path: gpath, method: req.method,
+      headers: { ...req.headers, host: `localhost:${GUARDIAN_ORIGIN.port}` } }, pres => {
+      res.writeHead(pres.statusCode, { ...pres.headers, 'Access-Control-Allow-Origin': '*' });
+      pres.pipe(res);
+    });
+    preq.on('error', e => { res.writeHead(502); res.end('guardian proxy: ' + e.message); });
+    req.pipe(preq);
+    return;
+  }
+
   // SSE: João's live dashboard feed
   if (req.method === 'GET' && req.url === '/api/seller/events') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache',

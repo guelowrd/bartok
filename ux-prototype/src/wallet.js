@@ -13,8 +13,11 @@ const RPC_URL = "https://rpc.testnet.miden.io";
 const STORE_NAME = "bartok-rita";
 const ACCOUNT_KEY = "bartok-rita-account";
 const SIGNER_KEY = "bartok-rita-signer"; // hex of AuthSecretKey.serialize()
-// Bartok-Guardian gRPC (proxied by Vite in dev, tunnelled in prod).
-const GUARDIAN_URL = "http://localhost:3300";
+// Backend base: "" in dev (Vite proxies /guardian → :3300); the tunnel URL in
+// prod (set VITE_BARTOK_BACKEND at build time). Guardian's HTTP is reachable at
+// <base>/guardian (bridge) or the tunnel's /guardian path.
+const BACKEND = import.meta.env.VITE_BARTOK_BACKEND || "";
+const GUARDIAN_URL = (BACKEND || (typeof location !== "undefined" ? location.origin : "")) + "/guardian";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const bytesToHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");

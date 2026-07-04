@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# NOTE: this is the CYCLE 1 E2E (public notes, plain settle_session). Cycle 2
+# settlement now goes through Bartok-Guardian multisig proposals — use the Rita
+# UI flow in DEMO.md for the current end-to-end. The --mock leg (MockChain
+# regression) still works and is the fast contract check.
 # BARTOK headless E2E: BOTH tiers through zkTLS -> oracle, assert the verified
 # models differ and the genius charge uses the 7x price, then settle the summed
 # charge on Miden TESTNET (buyer-side escrow via smoke_escrow + operator-side

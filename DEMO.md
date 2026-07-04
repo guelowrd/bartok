@@ -1,70 +1,91 @@
-# BARTOK — demo runbook (testnet MVP)
+# BARTOK — demo runbook (Cycle 2: private notes via Guardian + Rita UX)
 
-The "Uber of LLMs" on **Miden testnet**: a buyer holds a real in-browser Miden wallet,
-locks a BART budget in an on-chain escrow (like a ride-hailing card hold), chats with
-João whose two tiers are two real models, and every reply's **model identity and token
-count are extracted from a zkTLS proof** of the provider TLS session. Ending the chat
-settles once on testnet: João gets his charge, the buyer gets the rest back.
+The "Uber of LLMs" on **Miden testnet**, with private payment rails and an
+application **Guardian** (Bartok-Guardian). Three personas:
+- **Rita** (buyer) — sees only Credits (Bartoks, Ŧ) and simple brains; every
+  technical detail is hidden. Her wallet is a Guardian multisig.
+- **João** (seller) — lends spare AI; his dashboard may say "verified on Miden".
+- **Béla** (operator) — runs Bartok-Guardian + the bridge (the backend).
 
-## What's real vs. staged
-
-| Real | Staged (cosmetic) |
-| --- | --- |
-| Buyer wallet (in-browser Miden client, private account) | Helper matching animation |
-| BART balance, escrow note, settlement tx, refund (all on testnet, midenscan-linkable) | Ratings / tags / feedback |
-| The model reply (real OpenRouter call, notarized via TLSNotary MPC-TLS) | Seller "reputation" |
-| Verified model + token count (extracted from the proof by the oracle, notary-key checked) | |
-| Tier switch: Basic = 9B model @ 1 Ŧ/token, Genius = 70B+ class @ 7 Ŧ/token | |
-| João's dashboard feed (SSE from the bridge, real jobs + real settlements) | |
-
-Known deferred gap: the settlement note trusts the operator-supplied charge
-(on-chain oracle gating is a later increment; see ARCHITECTURE.md).
+Everything runs on your Mac against public testnet. Nothing is custodial:
+Guardian co-signs and backs up, it never holds funds; the escrow is a note that
+locks Rita's own credits and splits them on settlement.
 
 ## Prereqs (once)
 
 ```bash
-zktls-spike/setup.sh                                  # clones + wires TLSNotary
-cp zktls-spike/.env.example zktls-spike/.env          # then add a free OpenRouter key
-(cd zktls-spike/tlsn && cargo run --release --example openrouter_keygen)   # notary keys
-(cd miden/integration && cargo run --release --bin setup_accounts)         # João + operator + BART faucet on testnet
-(cd ux-prototype && npm install && npm run build:contracts)                # UI deps + compiled note for the browser
+# 1. zkTLS proof lane
+zktls-spike/setup.sh
+cp zktls-spike/.env.example zktls-spike/.env      # add a free OpenRouter key
+(cd zktls-spike/tlsn && cargo run --release --example openrouter_keygen)
+
+# 2. Bartok-Guardian (dedicated clone ~/Code/bartok-guardian, bartok branch)
+guardian/run.sh keygen                            # ACK keys (once)
+
+# 3. testnet accounts (BART faucet + operator/João Guardian multisigs)
+(cd miden/integration && cargo run --release --bin setup_accounts)
+(cd miden/integration && cargo run --release --bin setup_multisigs)
+
+# 4. buyer UI deps + compiled contract for the browser
+(cd ux-prototype && npm install && npm run build:contracts)
 ```
 
-Toolchain: rustup (stable + the pinned nightly auto-installs), `cargo install cargo-miden`
-(0.9.x — the midenup 0.14-channel shim is too old and must not shadow it), Node 18+.
+Toolchain: rustup + `cargo install cargo-miden` (0.9.x), Node 18+.
 
-## Run
+## Run (local)
 
 ```bash
-node ux-prototype/server.js        # the bridge; wait for:  [warm] ready ✓
-cd ux-prototype && npm run dev     # buyer UI on http://localhost:5173
-# seller dashboard: http://localhost:8787/seller.html
+./serve.sh                          # Bartok-Guardian :3300 + bridge :8787
+cd ux-prototype && npm run dev      # Rita's app → http://localhost:5173
+# João's dashboard: http://localhost:8787/seller.html
 ```
 
-## The demo (side-by-side windows)
+## The Rita demo
 
-1. Buyer header shows the wallet's real BART balance. If low, **Get BART** mints
-   50,000 from the project faucet (~15 s, midenscan link in the toast).
-2. **Find a helper**: locks 25,000 Ŧ in the escrow note. The browser builds and
-   proves the tx via the remote testnet prover behind the matching animation (~1-2 min).
-3. Ask something on **Basic**: ~15 s, reply lands with `✓ verified`, the model chip
-   (nemotron-nano-9b) and the per-token price. João's dashboard shows the job live.
-4. **The aha**: hit "↑ Ask Genius (7×)" on that reply. The same question re-runs
-   through the top tier: visibly better answer, model chip flips to a 70B+ model,
-   price jumps ~7x. Both chips are extracted from zkTLS proofs, so the switch is
-   not just visible, it is provable.
-5. **End & rate** → settle: one testnet tx splits the escrow. The receipt links the
-   settlement tx, João's payment note, and your refund note on midenscan; the refund
-   auto-lands back in the wallet balance (~1 min).
-6. Trust check: flip one hex digit in `keys/notary.pub.hex`, send a message — the
-   oracle rejects the unknown notary and nothing is charged. Revert; works again.
+1. First visit silently creates Rita's account (a private Guardian multisig).
+   Balance shows **Ŧ 0**.
+2. **Add credits** → mock card checkout → enter code **ILOVEBARTOK** →
+   **Ŧ 1,000** lands (a private mint, consumed via a Guardian proposal).
+3. Pick **Basic** → **Find a helper**. A small hold (Ŧ 3,000, capped by balance)
+   is set aside — the browser builds + Guardian-countersigns the escrow (~1-2 min,
+   masked by the "setting aside your credits" screen).
+4. Ask a question. Reply lands with `✓ verified` + its price in Ŧ. Ask a
+   follow-up — João remembers the conversation. Hit **↑ Ask Genius** → prompted
+   to create a free account (Genius needs one) → after signing up, the same
+   question re-runs through the 70B+ brain (verified model chip flips, price ~7×).
+5. **End & rate** → settlement (one Guardian-countersigned testnet tx) → receipt
+   in Ŧ with a neutral "view record" link → unused credits return to the balance.
+6. Anonymous users can spend up to Ŧ 500 before an account is required.
 
-## Headless E2E
+## Honest trust story (say this out loud)
+
+Every value-moving transaction on Rita's, João's, and the operator's accounts
+requires **Bartok-Guardian's co-signature** over that exact transaction — Guardian
+can never move funds alone, and it only co-signs deltas that consistently extend
+each account's canonical state. What Guardian does NOT yet check is business
+policy (that a charge matches an oracle attestation) — that's the deferred
+policy-ACK hook. So today: infrastructure gating in place, policy hook deferred.
+
+## Nerd view (Béla)
+
+The seller dashboard's live feed is the seed of Béla's ops view. `joao_sweep`
+drains any stuck seller-payment proposals. Guardian state is at `guardian/data/`;
+every account's deltas go candidate → canonical as testnet confirms them.
+
+## Ship to real Ritas
 
 ```bash
-./stitch.sh          # both tiers notarized + verified, models asserted to differ, settled on testnet
-./stitch.sh --mock   # MockChain settlement regression only (fast, offline)
+./serve.sh                          # backend on this Mac
+./tunnel.sh                         # cloudflared → stable https URL
+# Deploy Rita's app to Vercel with the backend URL baked in:
+cd ux-prototype && VITE_BARTOK_BACKEND=<tunnel-url> vercel deploy --prod
 ```
+The bridge proxies `/guardian` → Bartok-Guardian, so one tunnel serves both.
+Multi-Rita note: the zkTLS pipeline is serialized (one answer at a time) —
+testers queue under load; fine for the first cohort.
 
-Timing: ~15 s per message (7-8 s notarized model call + verify), ~1-2 min for
-browser-proved escrow funding, ~30-60 s for settlement.
+## Economics (all in `ux-prototype/server.js` CONFIG)
+
+Ŧ is pegged to the cheapest token: 1 Basic token = 1 Ŧ (anchor). Display rate
+Ŧ1 = $0.01. Genius = 7 Ŧ/token (account required). ILOVEBARTOK = Ŧ1,000. Anon
+spend cap Ŧ500. Holds: Basic Ŧ3,000, Genius Ŧ10,000 (capped by balance).

@@ -76,7 +76,7 @@
 </head>
 <body>
 <header>
-  <a class="brand" href="index.html">BAR<span class="hl">T̅</span>OK</a>
+  <a class="brand" href="index.html">BAR<span class="hl">╤</span>OK</a>
   <div class="hdr-right">
     <a class="earn-link" href="http://localhost:8787/seller.html" title="Rent out your spare AI and earn">Earn ⚡</a>
     <button class="fundbtn hidden" id="fundBtn">Get BART</button>
@@ -91,7 +91,7 @@
     <p class="sub">Pick a level. Every reply is priced per token and cryptographically verified.</p>
     <div class="classes" id="classes"></div>
     <button class="btn btn--block" id="findBtn">Find a helper</button>
-    <p class="sub" id="findNote" style="font-size:12px;margin-top:12px;">Starting a session locks a 25,000 T̅ budget in a Miden testnet escrow, like a ride-hailing card hold. Whatever you don't spend comes straight back when you end the chat.</p>
+    <p class="sub" id="findNote" style="font-size:12px;margin-top:12px;">Starting a session locks a 25,000 ╤ budget in a Miden testnet escrow, like a ride-hailing card hold. Whatever you don't spend comes straight back when you end the chat.</p>
   </div>
 </div>
 
@@ -194,7 +194,7 @@
   let state={tier:'basic', busy:false, sessionId:null, budget:0, remaining:0,
     spent:0, replies:0, rating:0, tags:[], faucet:null, settling:false};
   const $=id=>document.getElementById(id);
-  const units=n=>Number(n).toLocaleString()+' T̅';
+  const units=n=>Number(n).toLocaleString()+' ╤';
   const usd=n=>'$'+(n*USD_PER_UNIT).toFixed(2);
   function show(scr){['request','matching','chat','rate','receipt'].forEach(s=>$('s-'+s).classList.toggle('hidden',s!==scr));window.scrollTo(0,0);}
 
@@ -251,7 +251,7 @@
       const div=document.createElement('div');
       div.className='cls'+(state.tier===key?' sel':'');
       div.innerHTML=`<div><div class="name">${t.label}</div><div class="desc">${t.desc} · ${t.model}</div></div>
-        <div class="right"><div class="est">${t.price} T̅/token</div><div class="eta">≈ ${usd(t.price*300)} per reply</div></div>`;
+        <div class="right"><div class="est">${t.price} ╤/token</div><div class="eta">≈ ${usd(t.price*300)} per reply</div></div>`;
       div.onclick=()=>{state.tier=key;renderClasses();};
       $('classes').appendChild(div);
     });
@@ -294,7 +294,7 @@
   $('seg').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('seg').querySelectorAll('button').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');state.tier=b.dataset.tier;updateHint();});
   function updateHint(){
     const t=TIERS[state.tier];
-    $('tierHint').textContent=t.desc+' · '+t.price+' T̅/token';
+    $('tierHint').textContent=t.desc+' · '+t.price+' ╤/token';
     $('dbBudget').textContent='budget '+units(state.remaining);
   }
   const input=$('input');

@@ -27,7 +27,7 @@ a{color:var(--ink);}
 
 /* brand */
 .brand{font-family:var(--f-disp);font-size:22px;letter-spacing:1px;text-transform:uppercase;text-decoration:none;color:var(--ink);display:inline-block;}
-.brand .hl{background:var(--lime);border:2.5px solid var(--ink);padding:0 5px;margin:0 1px;box-shadow:var(--sh-sm);}
+.brand .hl{background:var(--lime);border:2.5px solid var(--ink);padding:0 5px;margin:0 7px 0 3px;box-shadow:var(--sh-sm);}
 .role{font-family:var(--f-mono);font-size:11px;font-weight:700;text-transform:uppercase;border:2.5px solid var(--ink);background:var(--coral);color:#fff;border-radius:999px;padding:2px 10px;margin-left:10px;}
 
 /* surfaces */

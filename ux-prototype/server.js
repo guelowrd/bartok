@@ -76,6 +76,15 @@ function run(cmd, args, cwd, env, timeout = 240000) {
   });
 }
 
+// The miden bins share one sqlite client store — never run two concurrently
+// (double-clicked mints etc. collide and surface as RPC/store errors).
+let midenQueue = Promise.resolve();
+function runMiden(bin, args, timeout) {
+  const next = midenQueue.then(() => run(path.join(MIDEN_BIN, bin), args, MIDEN_INT, process.env, timeout));
+  midenQueue = next.catch(() => {});
+  return next;
+}
+
 // Parse the last stdout line of a bin as JSON (our bins' machine-readable contract).
 function lastJson(out) {
   const lines = out.trim().split('\n').filter(l => l.trim().startsWith('{'));
@@ -178,8 +187,8 @@ const server = http.createServer(async (req, res) => {
     const { buyerId, tier = 'basic' } = JSON.parse(await readBody(req) || '{}');
     if (!buyerId) return json(res, 400, { error: 'missing buyerId' });
     if (!TIERS[tier]) return json(res, 400, { error: 'unknown tier' });
-    const p = await run(path.join(MIDEN_BIN, 'escrow_params'),
-      ['--seller', ACCOUNTS.seller, '--buyer', buyerId], MIDEN_INT, process.env, 30000);
+    const p = await runMiden('escrow_params',
+      ['--seller', ACCOUNTS.seller, '--buyer', buyerId], 30000);
     const params = lastJson(p.out);
     if (!params) return json(res, 500, { error: 'escrow_params failed', detail: p.out.slice(-400) });
     const sessionId = crypto.randomUUID();
@@ -257,12 +266,12 @@ const server = http.createServer(async (req, res) => {
       const charge = s.charges.reduce((a, c) => a + c.charge, 0);
       emit({ type: 'stage', stage: 'settle' });
       console.log(`[settle] ${sessionId} charge=${charge}`);
-      const r = await run(path.join(MIDEN_BIN, 'settle_session'), [
+      const r = await runMiden('settle_session', [
         '--note-id', s.escrowNoteId, '--charge', String(charge),
         '--buyer', s.buyerId,
         '--seller-serial', s.params.sellerSerial.join(','),
         '--buyer-serial', s.params.buyerSerial.join(','),
-      ], MIDEN_INT, process.env, 480000);
+      ], 480000);
       const settled = lastJson(r.out);
       if (r.code !== 0 || !settled) {
         throw new Error('settlement failed: ' + r.out.slice(-400));
@@ -293,8 +302,8 @@ const server = http.createServer(async (req, res) => {
     const { buyerId } = JSON.parse(await readBody(req) || '{}');
     if (!buyerId) return json(res, 400, { error: 'missing buyerId' });
     console.log(`[fund] ${buyerId}`);
-    const r = await run(path.join(MIDEN_BIN, 'fund_buyer'),
-      ['--buyer', buyerId, '--amount', String(FUND_AMOUNT)], MIDEN_INT, process.env, 240000);
+    const r = await runMiden('fund_buyer',
+      ['--buyer', buyerId, '--amount', String(FUND_AMOUNT)], 240000);
     const out = lastJson(r.out);
     if (r.code !== 0 || !out) return json(res, 500, { error: 'mint failed', detail: r.out.slice(-400) });
     json(res, 200, { ...out, amount: FUND_AMOUNT });

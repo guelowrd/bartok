@@ -184,3 +184,45 @@ pub async fn create_basic_faucet_account(
 
     Ok(account)
 }
+
+// ---- Bartok-Guardian multisig plumbing (cycle 2) ----------------------------
+
+/// Loads (or creates on first use) a persistent Falcon signer secret for a
+/// Guardian multisig role and returns a MultisigClient rooted in
+/// `../guardian-accounts/<role>/` (account store + signer, gitignored).
+pub async fn guardian_role_client(
+    role: &str,
+    guardian_grpc: &str,
+) -> Result<miden_multisig_client::MultisigClient> {
+    use miden_client::utils::Serializable;
+    use miden_multisig_client::SecretKey as FalconSecretKey;
+
+    let dir = std::path::PathBuf::from(format!("../guardian-accounts/{role}"));
+    std::fs::create_dir_all(&dir).context("create guardian account dir")?;
+    let key_path = dir.join("signer.hex");
+
+    let secret = if key_path.exists() {
+        let bytes = hex::decode(std::fs::read_to_string(&key_path)?.trim())
+            .context("bad signer hex")?;
+        FalconSecretKey::read_from_bytes(&bytes)
+            .map_err(|e| anyhow::anyhow!("signer deserialize: {e:?}"))?
+    } else {
+        let sk = FalconSecretKey::new();
+        std::fs::write(&key_path, hex::encode(sk.to_bytes()))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&key_path, std::fs::Permissions::from_mode(0o600))?;
+        }
+        sk
+    };
+
+    miden_multisig_client::MultisigClient::builder()
+        .miden_endpoint(Endpoint::testnet())
+        .guardian_endpoint(guardian_grpc)
+        .account_dir(&dir)
+        .with_secret_key(secret)
+        .build()
+        .await
+        .map_err(|e| anyhow::anyhow!("multisig client build ({role}): {e:?}"))
+}

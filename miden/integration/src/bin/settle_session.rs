@@ -1,26 +1,35 @@
-// Consumes the session escrow note as the operator, passing the charge as the
-// note ARG. The BartokSettlement script splits the escrow into P2ID(charge) to
-// João and P2ID(refund) back to the buyer. Afterwards it best-effort consumes
-// João's payment note so the seller balance is real.
+// Settles a session on Miden testnet through the OPERATOR's Guardian multisig:
+// the settlement tx is pushed to Bartok-Guardian as a custom proposal
+// ("bartok_settle"), countersigned (operator signer auto-attached + Guardian
+// ACK), and only then submitted on-chain. The escrow note rides as an
+// UNAUTHENTICATED input note (full details from --escrow-note-b64), so private
+// escrow notes need no node lookup. Afterwards João's payment note is consumed
+// through HIS Guardian multisig via a consume_notes v2 proposal.
 //
 // The last stdout line is a JSON object:
-//   {"txId","sellerNoteId","buyerNoteId","charge","refund","explorer"}
+//   {"txId?","sellerNoteId","buyerNoteId","charge","refund","explorer",
+//    "refundNoteFileB64","settleProposalId","joaoProposalId?"}
 //
-// Usage: settle_session --note-id <hex> --charge <u64> --buyer <hex-id>
+// Usage: settle_session --escrow-note-b64 <b64> --charge <u64> --buyer <hex-id>
 //                       --seller-serial <a,b,c,d> --buyer-serial <a,b,c,d>
-use std::time::Duration;
-
 use anyhow::{bail, Context, Result};
-use integration::helpers::{setup_client, ClientSetup};
+use base64::Engine;
+use integration::helpers::guardian_role_client;
 use miden_client::{
     account::AccountId,
     asset::{Asset, FungibleAsset},
-    note::{Note, NoteAssets, NoteFile, NoteId, NoteTag, NoteType, PartialNoteMetadata},
+    note::{
+        Note, NoteAssets, NoteDetails, NoteFile, NoteTag, NoteType, PartialNoteMetadata,
+    },
     transaction::TransactionRequestBuilder,
-    Client, Felt, Word,
+    utils::{Deserializable, Serializable},
+    Felt, Word,
 };
-use miden_client::keystore::FilesystemKeyStore;
+use miden_multisig_client::{SerializedNote, TransactionType};
 use miden_standards::note::P2idNoteStorage;
+use rand::RngCore;
+
+const B64: base64::engine::GeneralPurpose = base64::engine::general_purpose::STANDARD;
 
 fn arg_value(args: &[String], flag: &str) -> Result<String> {
     args.iter()
@@ -46,27 +55,22 @@ fn parse_serial(s: &str) -> Result<Word> {
     Ok(Word::new([felts[0], felts[1], felts[2], felts[3]]))
 }
 
-async fn wait_for_committed_note(
-    client: &mut Client<FilesystemKeyStore>,
-    note_id: NoteId,
-) -> Result<Note> {
-    for _ in 0..36 {
-        client.sync_state().await.context("sync failed")?;
-        if let Some(record) = client.get_input_note(note_id).await? {
-            if record.is_committed() {
-                let note: Note = record.try_into().context("note record missing details")?;
-                return Ok(note);
+fn random_word() -> Word {
+    let mut rng = rand::rng();
+    let felts: Vec<Felt> = (0..4)
+        .map(|_| loop {
+            if let Ok(f) = Felt::new(rng.next_u64()) {
+                break f;
             }
-        }
-        tokio::time::sleep(Duration::from_secs(5)).await;
-    }
-    bail!("timed out waiting for note {} to commit", note_id.to_hex());
+        })
+        .collect();
+    Word::new([felts[0], felts[1], felts[2], felts[3]])
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    let note_id_hex = arg_value(&args, "--note-id")?;
+    let escrow_b64 = arg_value(&args, "--escrow-note-b64")?;
     let charge: u64 = arg_value(&args, "--charge")?.parse().context("bad charge")?;
     let buyer = AccountId::from_hex(&arg_value(&args, "--buyer")?).context("bad buyer id")?;
     let seller_serial = parse_serial(&arg_value(&args, "--seller-serial")?)?;
@@ -74,23 +78,23 @@ async fn main() -> Result<()> {
 
     let accounts: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string("../accounts.json")?)
-            .context("run setup_accounts first")?;
-    let seller = AccountId::from_hex(accounts["seller"].as_str().context("seller missing")?)?;
-    let operator = AccountId::from_hex(accounts["operator"].as_str().context("operator missing")?)?;
+            .context("run setup_accounts + setup_multisigs first")?;
+    let seller = AccountId::from_hex(
+        accounts["sellerMultisig"].as_str().context("sellerMultisig missing — run setup_multisigs")?,
+    )?;
+    let operator_multisig = AccountId::from_hex(
+        accounts["operatorMultisig"].as_str().context("operatorMultisig missing")?,
+    )?;
     let faucet = AccountId::from_hex(accounts["faucet"].as_str().context("faucet missing")?)?;
+    let guardian_grpc = accounts["guardianGrpc"].as_str().context("guardianGrpc missing")?;
 
-    let ClientSetup { mut client, .. } = setup_client().await?;
-    client.sync_state().await.context("initial sync failed")?;
+    // Full escrow note from the bridge (private notes never touch the node's public state).
+    let escrow_note = Note::read_from_bytes(
+        &B64.decode(escrow_b64.trim()).context("escrow b64 decode")?,
+    )
+    .map_err(|e| anyhow::anyhow!("escrow note deserialize: {e:?}"))?;
 
-    // Fetch the public escrow note from the node and wait until it is committed.
-    let note_id = NoteId::try_from_hex(&note_id_hex).context("bad note id hex")?;
-    client
-        .import_notes(&[NoteFile::NoteId(note_id)])
-        .await
-        .context("failed to import escrow note from node")?;
-    let escrow_note = wait_for_committed_note(&mut client, note_id).await?;
-
-    // Budget = the escrowed BART amount.
+    // Budget = escrowed BART amount.
     let budget = escrow_note
         .assets()
         .iter()
@@ -104,6 +108,16 @@ async fn main() -> Result<()> {
     }
     let refund = budget - charge;
 
+    // The output notes' type comes from the escrow storage itself (felt #10:
+    // 1 = public, 2 = private) so this bin needs no extra flag.
+    let storage_items = escrow_note.recipient().storage().items().to_vec();
+    let note_type_felt = storage_items.get(10).copied().context("escrow storage too short")?;
+    let out_note_type = if note_type_felt.as_canonical_u64() == 2 {
+        NoteType::Private
+    } else {
+        NoteType::Public
+    };
+
     // Reconstruct the P2ID recipients the escrow storage committed to.
     let seller_recipient = P2idNoteStorage::new(seller).into_recipient(seller_serial);
     let buyer_recipient = P2idNoteStorage::new(buyer).into_recipient(buyer_serial);
@@ -116,75 +130,122 @@ async fn main() -> Result<()> {
         expected.push(buyer_recipient.clone());
     }
 
-    let request = TransactionRequestBuilder::new()
-        .input_notes([(
-            escrow_note,
-            Some(Word::from([
-                Felt::new(charge).map_err(|e| anyhow::anyhow!("bad charge felt: {e:?}"))?,
-                Felt::ZERO,
-                Felt::ZERO,
-                Felt::ZERO,
-            ])),
-        )])
-        .expected_output_recipients(expected)
-        .build()
-        .context("failed to build settlement request")?;
+    let args_word = Word::from([
+        Felt::new(charge).map_err(|e| anyhow::anyhow!("bad charge felt: {e:?}"))?,
+        Felt::ZERO,
+        Felt::ZERO,
+        Felt::ZERO,
+    ]);
+    let salt = random_word();
 
-    let tx_id = client
-        .submit_new_transaction(operator, request)
-        .await
-        .context("settlement transaction failed")?;
-
-    // Output note ids are derived from recipient digest + assets only.
-    let note_ids = |amount: u64, recipient: &miden_client::note::NoteRecipient, target: AccountId| -> Result<NoteId> {
-        let assets =
-            NoteAssets::new(vec![Asset::Fungible(FungibleAsset::new(faucet, amount)?)])?;
-        let metadata = PartialNoteMetadata::new(operator, NoteType::Public)
-            .with_tag(NoteTag::with_account_target(target));
-        Ok(Note::new(assets, metadata, recipient.clone()).id())
+    // The request must be summary-reproducible between propose and execute:
+    // identical note, args, recipients, and auth salt each time.
+    let build_request = |advice: &[(Word, Vec<Felt>)]| -> Result<_> {
+        let mut b = TransactionRequestBuilder::new()
+            .input_notes([(escrow_note.clone(), Some(args_word))])
+            .expected_output_recipients(expected.clone())
+            .auth_arg(salt);
+        for (k, v) in advice {
+            b = b.extend_advice_map([(*k, v.clone())]);
+        }
+        b.build().context("build settlement request")
     };
-    let seller_note_id = (charge > 0)
-        .then(|| note_ids(charge, &seller_recipient, seller))
-        .transpose()?;
-    let buyer_note_id = (refund > 0)
-        .then(|| note_ids(refund, &buyer_recipient, buyer))
-        .transpose()?;
 
-    // Best-effort: consume João's payment note so his balance is real.
-    if let Some(seller_note) = seller_note_id {
-        if let Err(e) = consume_as_seller(&mut client, seller, seller_note).await {
-            eprintln!("warning: seller auto-consume failed: {e:#}");
+    let mut operator = guardian_role_client("operator", guardian_grpc).await?;
+    if operator.account_id() != Some(operator_multisig) {
+        bail!("operator multisig id drift — rerun setup_multisigs");
+    }
+
+    let request_bytes = build_request(&[])?.to_bytes();
+    let proposal = operator
+        .propose_custom_transaction(&request_bytes, "bartok_settle")
+        .await
+        .map_err(|e| anyhow::anyhow!("propose bartok_settle: {e:?}"))?;
+    eprintln!("settle proposal {} pushed to Bartok-Guardian", proposal.id);
+
+    let advice = operator
+        .prepare_custom_execution(&proposal.id, &request_bytes)
+        .await
+        .map_err(|e| anyhow::anyhow!("prepare_custom_execution: {e:?}"))?;
+
+    let exec_request = build_request(&advice)?;
+    operator
+        .submit_transaction(exec_request)
+        .await
+        .map_err(|e| anyhow::anyhow!("submit settlement: {e:?}"))?;
+
+    // Output note ids derive from recipient digest + assets.
+    let make_note = |amount: u64, recipient: &miden_client::note::NoteRecipient, target: AccountId| -> Result<Note> {
+        Ok(Note::new(
+            NoteAssets::new(vec![Asset::Fungible(FungibleAsset::new(faucet, amount)?)])?,
+            PartialNoteMetadata::new(operator_multisig, out_note_type)
+                .with_tag(NoteTag::with_account_target(target)),
+            recipient.clone(),
+        ))
+    };
+    let seller_note = (charge > 0).then(|| make_note(charge, &seller_recipient, seller)).transpose()?;
+    let buyer_note = (refund > 0).then(|| make_note(refund, &buyer_recipient, buyer)).transpose()?;
+
+    // Refund note details for the buyer (bridge -> browser -> consume v2 proposal).
+    let refund_note_file_b64 = buyer_note
+        .as_ref()
+        .map(|n| {
+            let file = NoteFile::NoteDetails {
+                details: NoteDetails::new(n.assets().clone(), n.recipient().clone()),
+                after_block_num: 0.into(),
+                tag: Some(NoteTag::with_account_target(buyer)),
+            };
+            B64.encode(file.to_bytes())
+        });
+
+    // João's payment lands in HIS Guardian multisig via a consume_notes v2 proposal.
+    let mut joao_proposal_id = None;
+    if let Some(ref note) = seller_note {
+        match consume_as_joao(guardian_grpc, note).await {
+            Ok(id) => joao_proposal_id = Some(id),
+            Err(e) => eprintln!("warning: João consume proposal failed: {e:#}"),
         }
     }
 
     let out = serde_json::json!({
-        "txId": tx_id.to_hex(),
-        "sellerNoteId": seller_note_id.map(|n| n.to_hex()),
-        "buyerNoteId": buyer_note_id.map(|n| n.to_hex()),
+        "settleProposalId": proposal.id,
+        "sellerNoteId": seller_note.as_ref().map(|n| n.id().to_hex()),
+        "buyerNoteId": buyer_note.as_ref().map(|n| n.id().to_hex()),
         "charge": charge,
         "refund": refund,
-        "explorer": format!("https://testnet.midenscan.com/tx/{}", tx_id.to_hex()),
+        "refundNoteFileB64": refund_note_file_b64,
+        "joaoProposalId": joao_proposal_id,
+        "explorer": format!("https://testnet.midenscan.com/account/{}", operator_multisig.to_hex()),
     });
     println!("{}", serde_json::to_string(&out)?);
     Ok(())
 }
 
-async fn consume_as_seller(
-    client: &mut Client<FilesystemKeyStore>,
-    seller: AccountId,
-    note_id: NoteId,
-) -> Result<()> {
-    for _ in 0..24 {
-        client.sync_state().await?;
-        let consumable = client.get_consumable_notes(Some(seller)).await?;
-        if let Some((record, _)) = consumable.iter().find(|(r, _)| r.id() == Some(note_id)) {
-            let note: Note = record.clone().try_into().context("missing note details")?;
-            let request = TransactionRequestBuilder::new().build_consume_notes(vec![note])?;
-            let tx = client.submit_new_transaction(seller, request).await?;
-            eprintln!("seller consumed payment note in tx {}", tx.to_hex());
-            return Ok(());
+async fn consume_as_joao(guardian_grpc: &str, payment_note: &Note) -> Result<String> {
+    let mut joao = guardian_role_client("joao", guardian_grpc).await?;
+    // Wait until the settlement tx commits so the note exists on-chain.
+    for attempt in 0..24 {
+        joao.sync().await.ok();
+        let proposal = joao
+            .propose_transaction(TransactionType::ConsumeNotes {
+                note_ids: vec![payment_note.id()],
+                metadata_version: Some(2),
+                notes: vec![SerializedNote::from_note(payment_note)],
+            })
+            .await;
+        match proposal {
+            Ok(p) => {
+                joao.execute_proposal(&p.id)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("execute João consume: {e:?}"))?;
+                return Ok(p.id);
+            },
+            Err(e) if attempt < 23 => {
+                eprintln!("João consume not ready (attempt {attempt}): {e:?}");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+            },
+            Err(e) => return Err(anyhow::anyhow!("propose João consume: {e:?}")),
         }
-        tokio::time::sleep(Duration::from_secs(5)).await;
     }
-    bail!("payment note never became consumable")
+    unreachable!()
 }

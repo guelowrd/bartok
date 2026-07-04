@@ -31,3 +31,4 @@ ux-prototype/public/packages/
 guardian/data/
 guardian/keys/
 guardian/.env
+miden/guardian-accounts/

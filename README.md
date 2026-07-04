@@ -45,7 +45,7 @@ cd ux-prototype && npm run dev     # buyer UI  -> http://localhost:5173
 
 ## Status (testnet MVP)
 - Buyer wallet in the browser (create, mint BART, fund escrow, absorb refund): **working on testnet**
-- Two real tiers: Basic (nemotron-nano-9B, 1 Ƃ/token) and Genius (70B+ class, 7 Ƃ/token),
+- Two real tiers: Basic (nemotron-nano-9B, 1 Ŧ/token) and Genius (70B+ class, 7 Ŧ/token),
   with the "↑ Ask Genius" same-prompt comparison: **working**
 - zkTLS proof + notary-checked oracle (model + tokens extracted from the proof): **working**
 - Per-session escrow settlement on testnet (P2ID split + refund auto-landing): **working**

@@ -14,7 +14,7 @@ settles once on testnet: João gets his charge, the buyer gets the rest back.
 | BART balance, escrow note, settlement tx, refund (all on testnet, midenscan-linkable) | Ratings / tags / feedback |
 | The model reply (real OpenRouter call, notarized via TLSNotary MPC-TLS) | Seller "reputation" |
 | Verified model + token count (extracted from the proof by the oracle, notary-key checked) | |
-| Tier switch: Basic = 9B model @ 1 Ƃ/token, Genius = 70B+ class @ 7 Ƃ/token | |
+| Tier switch: Basic = 9B model @ 1 Ŧ/token, Genius = 70B+ class @ 7 Ŧ/token | |
 | João's dashboard feed (SSE from the bridge, real jobs + real settlements) | |
 
 Known deferred gap: the settlement note trusts the operator-supplied charge
@@ -45,7 +45,7 @@ cd ux-prototype && npm run dev     # buyer UI on http://localhost:5173
 
 1. Buyer header shows the wallet's real BART balance. If low, **Get BART** mints
    50,000 from the project faucet (~15 s, midenscan link in the toast).
-2. **Find a helper**: locks 25,000 Ƃ in the escrow note. The browser builds and
+2. **Find a helper**: locks 25,000 Ŧ in the escrow note. The browser builds and
    proves the tx via the remote testnet prover behind the matching animation (~1-2 min).
 3. Ask something on **Basic**: ~15 s, reply lands with `✓ verified`, the model chip
    (nemotron-nano-9b) and the per-token price. João's dashboard shows the job live.

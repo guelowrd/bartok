@@ -44,7 +44,7 @@
 </head>
 <body>
 <header>
-  <div><a class="brand" href="index.html">BAR<span class="hl">T</span>OK</a><span class="role">Seller</span></div>
+  <div><a class="brand" href="index.html">BAR<span class="hl">Ŧ</span>OK</a><span class="role">Seller</span></div>
   <div class="online">
     <span class="status-txt" id="statusTxt">Offline</span>
     <div class="toggle" id="toggle"><div class="knob"></div></div>
@@ -53,7 +53,7 @@
 <div class="wrap">
 
   <div class="toprow">
-    <div class="card stat"><div class="k">Earned today</div><div class="v" id="earned">0 Ƃ</div></div>
+    <div class="card stat"><div class="k">Earned today</div><div class="v" id="earned">0 Ŧ</div></div>
     <div class="card stat"><div class="k">Replies served</div><div class="v" id="served">0</div></div>
     <div class="card stat"><div class="k">Reputation</div><div class="v"><span class="stars">★</span> 4.6</div></div>
   </div>
@@ -67,11 +67,11 @@
   <div class="card" id="offers">
     <div class="offer" data-tier="basic">
       <div><div class="name">Basic</div><div class="desc" id="basicModel">fast, simple replies</div></div>
-      <div class="offer-right"><div class="rate"><b id="basicRate">1 Ƃ</b><span class="muted">/token</span></div></div>
+      <div class="offer-right"><div class="rate"><b id="basicRate">1 Ŧ</b><span class="muted">/token</span></div></div>
     </div>
     <div class="offer" data-tier="genius">
       <div><div class="name">Genius</div><div class="desc" id="geniusModel">most capable, hard asks</div></div>
-      <div class="offer-right"><div class="rate"><b id="geniusRate">7 Ƃ</b><span class="muted">/token</span></div></div>
+      <div class="offer-right"><div class="rate"><b id="geniusRate">7 Ŧ</b><span class="muted">/token</span></div></div>
     </div>
   </div>
 
@@ -88,7 +88,7 @@
 
   <h2>Earnings</h2>
   <div class="card earnrow">
-    <div>Available to withdraw: <b id="avail">0 Ƃ</b><div class="muted" style="font-size:12px;">settled to your Miden wallet</div></div>
+    <div>Available to withdraw: <b id="avail">0 Ŧ</b><div class="muted" style="font-size:12px;">settled to your Miden wallet</div></div>
     <button class="btn btn--cobalt">Withdraw</button>
   </div>
 
@@ -97,7 +97,7 @@
   // Live feed from the BARTOK bridge (server.js SSE). No mock jobs: every row
   // is a real zkTLS-verified reply or a real Miden settlement.
   const $=id=>document.getElementById(id);
-  const units=n=>Number(n).toLocaleString()+' Ƃ';
+  const units=n=>Number(n).toLocaleString()+' Ŧ';
   const usd=n=>'$'+n.toFixed(2);
   let earned=0, served=0, settledTotal=0;
 
@@ -122,8 +122,8 @@
     if(d.tiers){
       $('basicModel').textContent=d.tiers.basic.model;
       $('geniusModel').textContent=d.tiers.genius.model;
-      $('basicRate').textContent=d.tiers.basic.pricePerToken+' Ƃ';
-      $('geniusRate').textContent=d.tiers.genius.pricePerToken+' Ƃ';
+      $('basicRate').textContent=d.tiers.basic.pricePerToken+' Ŧ';
+      $('geniusRate').textContent=d.tiers.genius.pricePerToken+' Ŧ';
     }
   });
   es.addEventListener('job_started',e=>{

@@ -201,7 +201,7 @@ const server = http.createServer(async (req, res) => {
     const params = lastJson(p.out);
     if (!params) return json(res, 500, { error: 'build_escrow failed', detail: p.out.slice(-400) });
     const sessionId = crypto.randomUUID();
-    sessions.set(sessionId, { buyerId, tier, params, escrowNoteId: null,
+    sessions.set(sessionId, { buyerId, tier, params, escrowNoteB64: null,
       charges: [], settled: false, createdAt: Date.now() });
     console.log(`[session] ${sessionId} buyer=${buyerId} tier=${tier}`);
     json(res, 200, { sessionId, escrowTemplate: {
@@ -217,7 +217,7 @@ const server = http.createServer(async (req, res) => {
     if (!s) return json(res, 404, { error: 'unknown session' });
     if (!noteB64) return json(res, 400, { error: 'missing noteB64 (private escrow needs full note details)' });
     s.escrowNoteB64 = noteB64;
-    console.log(`[session] ${sessionId} escrow=${noteId}`);
+    console.log(`[session] ${sessionId} escrow registered`);
     json(res, 200, { ok: true, budget: ESCROW_BUDGET });
     return;
   }
@@ -228,7 +228,7 @@ const server = http.createServer(async (req, res) => {
       const { sessionId, prompt, tier } = JSON.parse(await readBody(req) || '{}');
       const s = sessions.get(sessionId);
       if (!s) throw new Error('unknown session');
-      if (!s.escrowNoteId) throw new Error('session has no escrow yet');
+      if (!s.escrowNoteB64) throw new Error('session has no escrow yet');
       if (s.settled) throw new Error('session already settled');
       if (!prompt) throw new Error('missing prompt');
       const msgTier = tier || s.tier;
@@ -269,7 +269,7 @@ const server = http.createServer(async (req, res) => {
       const { sessionId } = JSON.parse(await readBody(req) || '{}');
       const s = sessions.get(sessionId);
       if (!s) throw new Error('unknown session');
-      if (!s.escrowNoteId) throw new Error('session has no escrow');
+      if (!s.escrowNoteB64) throw new Error('session has no escrow');
       if (s.settled) throw new Error('already settled');
       const charge = s.charges.reduce((a, c) => a + c.charge, 0);
       emit({ type: 'stage', stage: 'settle' });

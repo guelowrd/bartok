@@ -187,7 +187,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && req.url === '/api/config') {
-    json(res, 200, { faucet: ACCOUNTS.faucet, seller: ACCOUNTS.seller,
+    json(res, 200, { faucet: ACCOUNTS.faucet, seller: ACCOUNTS.sellerMultisig,
       escrowBudget: ESCROW_BUDGET, usdPerUnit: USD_PER_UNIT, fundAmount: FUND_AMOUNT });
     return;
   }
@@ -197,7 +197,7 @@ const server = http.createServer(async (req, res) => {
     if (!buyerId) return json(res, 400, { error: 'missing buyerId' });
     if (!TIERS[tier]) return json(res, 400, { error: 'unknown tier' });
     const p = await runMiden('escrow_params',
-      ['--seller', ACCOUNTS.seller, '--buyer', buyerId], 30000);
+      ['--seller', ACCOUNTS.sellerMultisig, '--buyer', buyerId], 30000);
     const params = lastJson(p.out);
     if (!params) return json(res, 500, { error: 'escrow_params failed', detail: p.out.slice(-400) });
     const sessionId = crypto.randomUUID();
@@ -214,10 +214,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/api/session/escrow') {
-    const { sessionId, noteId } = JSON.parse(await readBody(req) || '{}');
+    const { sessionId, noteId, noteB64 } = JSON.parse(await readBody(req) || '{}');
     const s = sessions.get(sessionId);
     if (!s) return json(res, 404, { error: 'unknown session' });
+    if (!noteB64) return json(res, 400, { error: 'missing noteB64 (private escrow needs full note details)' });
     s.escrowNoteId = noteId;
+    s.escrowNoteB64 = noteB64;
     console.log(`[session] ${sessionId} escrow=${noteId}`);
     json(res, 200, { ok: true, budget: ESCROW_BUDGET });
     return;
@@ -276,7 +278,7 @@ const server = http.createServer(async (req, res) => {
       emit({ type: 'stage', stage: 'settle' });
       console.log(`[settle] ${sessionId} charge=${charge}`);
       const r = await runMiden('settle_session', [
-        '--note-id', s.escrowNoteId, '--charge', String(charge),
+        '--escrow-note-b64', s.escrowNoteB64, '--charge', String(charge),
         '--buyer', s.buyerId,
         '--seller-serial', s.params.sellerSerial.join(','),
         '--buyer-serial', s.params.buyerSerial.join(','),
@@ -287,18 +289,23 @@ const server = http.createServer(async (req, res) => {
       }
       s.settled = true;
       sellerStats.settled += 1;
+      // João consuming his payment is off Rita's critical path: reconcile it in
+      // the background (waits for block inclusion, then proposes+executes).
+      if (settled.sellerNoteFileB64) {
+        runMiden('joao_sweep', ['--note-file-b64', settled.sellerNoteFileB64], 300000)
+          .then(r => console.log(`[joao] ${r.code === 0 ? 'consumed' : 'reconcile pending'}`))
+          .catch(() => {});
+      }
       sellerBroadcast('session_settled', { charge, chargeUsd: usd(charge),
-        txId: settled.txId, explorer: settled.explorer });
-      console.log(`[settle] ${sessionId} tx=${settled.txId}`);
-      emit({ type: 'done', txId: settled.txId, charge, refund: settled.refund,
+        proposalId: settled.settleProposalId, explorer: settled.explorer });
+      console.log(`[settle] ${sessionId} proposal=${settled.settleProposalId}`);
+      emit({ type: 'done', charge, refund: settled.refund,
         chargeUsd: usd(charge), refundUsd: usd(settled.refund),
+        settleProposalId: settled.settleProposalId,
         sellerNoteId: settled.sellerNoteId, buyerNoteId: settled.buyerNoteId,
-        buyerSerial: s.params.buyerSerial,
-        links: {
-          tx: settled.explorer,
-          sellerNote: settled.sellerNoteId ? `https://testnet.midenscan.com/note/${settled.sellerNoteId}` : null,
-          buyerNote: settled.buyerNoteId ? `https://testnet.midenscan.com/note/${settled.buyerNoteId}` : null,
-        } });
+        refundNoteFileB64: settled.refundNoteFileB64,
+        joaoProposalId: settled.joaoProposalId,
+        links: { operator: settled.explorer } });
     } catch (e) {
       console.error('[settle] error:', e.message);
       emit({ type: 'done', error: String(e.message || e) });
@@ -348,6 +355,6 @@ function warm() {
 const PORT = process.env.PORT || 8787;
 server.listen(PORT, () => {
   console.log(`BARTOK bridge -> http://localhost:${PORT}  (seller dashboard: /seller.html)`);
-  console.log(`accounts: seller=${ACCOUNTS.seller} operator=${ACCOUNTS.operator} faucet=${ACCOUNTS.faucet}`);
+  console.log(`accounts: sellerMultisig=${ACCOUNTS.sellerMultisig} operatorMultisig=${ACCOUNTS.operatorMultisig} faucet=${ACCOUNTS.faucet} guardian=${ACCOUNTS.guardianHttp}`);
   warm();
 });

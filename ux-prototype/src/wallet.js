@@ -45,6 +45,16 @@ const randomWord = () =>
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+const bytesToB64 = (bytes) => {
+  let bin = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+  }
+  return btoa(bin);
+};
+const b64ToBytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
 export class BartokWallet {
   /** @type {WasmWebClient} */ client = null;
   wallet = null;
@@ -102,6 +112,12 @@ export class BartokWallet {
     return this.waitAndAbsorb(timeoutMs);
   }
 
+  /** Import a full serialized NoteFile (private-note rail), then absorb it. */
+  async absorbNoteFile(noteFileB64, timeoutMs = 120000) {
+    await this.client.importNoteFile(NoteFile.deserialize(b64ToBytes(noteFileB64)));
+    return this.waitAndAbsorb(timeoutMs);
+  }
+
   /** Poll until at least one note is absorbed or timeout. Returns # consumed. */
   async waitAndAbsorb(timeoutMs = 120000, everyMs = 5000) {
     const t0 = Date.now();
@@ -140,14 +156,17 @@ export class BartokWallet {
       randomWord(), noteScript, new NoteStorage(new FeltArray(storageFelts)),
     );
     const metadata = new NoteMetadata(
-      this.wallet.id(), NoteType.Public, new NoteTag(template.operatorTag),
+      this.wallet.id(), NoteType.Private, new NoteTag(template.operatorTag),
     );
     const assets = new NoteAssets([
       new FungibleAsset(AccountId.fromHex(template.faucet), BigInt(template.budget)),
     ]);
     const note = new Note(assets, metadata, recipient);
-    // Capture the id BEFORE the note is moved into the request (wasm ownership).
+    // Capture id + serialized bytes BEFORE the note is moved into the request
+    // (wasm ownership): the bridge needs the full note details — private notes
+    // never publish them on-chain.
     const noteId = note.id().toString();
+    const noteB64 = bytesToB64(note.serialize());
 
     const request = new TransactionRequestBuilder()
       .withOwnOutputNotes(new NoteArray([note]))
@@ -156,6 +175,6 @@ export class BartokWallet {
     const txId = await this.client.submitNewTransactionWithProver(
       AccountId.fromHex(this.id()), request, this.prover,
     );
-    return { noteId, txId: txId.toHex() };
+    return { noteId, noteB64, txId: txId.toHex() };
   }
 }

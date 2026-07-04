@@ -25,7 +25,6 @@ use miden_client::{
     utils::{Deserializable, Serializable},
     Felt, Word,
 };
-use miden_multisig_client::{SerializedNote, TransactionType};
 use miden_standards::note::P2idNoteStorage;
 use rand::RngCore;
 
@@ -205,14 +204,6 @@ async fn main() -> Result<()> {
             B64.encode(file.to_bytes())
         });
 
-    // João's payment lands in HIS Guardian multisig via a consume_notes v2 proposal.
-    let mut joao_proposal_id = None;
-    if let Some(ref note) = seller_note {
-        match consume_as_joao(guardian_grpc, seller, note).await {
-            Ok(id) => joao_proposal_id = Some(id),
-            Err(e) => eprintln!("warning: João consume proposal failed: {e:#}"),
-        }
-    }
 
     let out = serde_json::json!({
         "settleProposalId": proposal.id,
@@ -222,57 +213,8 @@ async fn main() -> Result<()> {
         "refund": refund,
         "refundNoteFileB64": refund_note_file_b64,
         "sellerNoteFileB64": seller_note_file_b64,
-        "joaoProposalId": joao_proposal_id,
         "explorer": format!("https://testnet.midenscan.com/account/{}", operator_multisig.to_hex()),
     });
     println!("{}", serde_json::to_string(&out)?);
     Ok(())
-}
-
-async fn consume_as_joao(
-    guardian_grpc: &str,
-    seller: AccountId,
-    payment_note: &Note,
-) -> Result<String> {
-    let mut joao = guardian_role_client("joao", guardian_grpc, Some(seller)).await?;
-    joao.sync().await.ok();
-
-    // One pending candidate per account (Guardian rule): resume an existing
-    // pending consume proposal for this note if present, else push a new one.
-    let existing = joao
-        .list_proposals()
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .find(|p| match &p.transaction_type {
-            TransactionType::ConsumeNotes { note_ids, .. } => {
-                note_ids.contains(&payment_note.id())
-            },
-            _ => false,
-        });
-    let proposal = match existing {
-        Some(p) => {
-            eprintln!("resuming pending João consume proposal {}", p.id);
-            p
-        },
-        None => joao
-            .propose_transaction(TransactionType::ConsumeNotes {
-                note_ids: vec![payment_note.id()],
-                metadata_version: Some(2),
-                notes: vec![SerializedNote::from_note(payment_note)],
-            })
-            .await
-            .map_err(|e| anyhow::anyhow!("propose João consume: {e:?}"))?,
-    };
-
-    // Execute ONCE, after the settlement has had time to land in a block:
-    // execute_proposal pushes a delta first, so retrying a failed execute only
-    // wedges the account behind its own orphaned delta (one-pending rule).
-    // If this single attempt fails, joao_sweep drains it later.
-    tokio::time::sleep(std::time::Duration::from_secs(30)).await;
-    joao.sync().await.ok();
-    joao.execute_proposal(&proposal.id)
-        .await
-        .map_err(|e| anyhow::anyhow!("execute João consume: {e:?}"))?;
-    Ok(proposal.id)
 }

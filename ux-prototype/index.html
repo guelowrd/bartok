@@ -271,8 +271,8 @@
       if(bal!==null && bal < BigInt(state.budget)) throw new Error('You need '+units(state.budget)+', hit "Get BART" first.');
       $('matchTitle').innerHTML='Locking your<br>budget…';
       $('matchSub').textContent='Escrowing '+units(state.budget)+' on Miden testnet (proving in your browser via the remote prover, ~1-2 min).';
-      const {noteId}=await w.fundEscrow(s.escrowTemplate);
-      await fetch('/api/session/escrow',{method:'POST',body:JSON.stringify({sessionId:state.sessionId,noteId})});
+      const {noteId,noteB64}=await w.fundEscrow(s.escrowTemplate);
+      await fetch('/api/session/escrow',{method:'POST',body:JSON.stringify({sessionId:state.sessionId,noteId,noteB64})});
       state.escrowNoteId=noteId;
       await refreshBalance();
       enterChat();
@@ -421,15 +421,14 @@
          <div class="rline"><span>Replies</span><span>${state.replies}</span></div>
          <div class="rline"><span>Charged</span><span>${units(data.charge)} ≈ ${usd(data.charge)}</span></div>
          <div class="rline"><span>Refunded to you</span><span>${units(data.refund)} ≈ ${usd(data.refund)}</span></div>
-         <div class="rline total"><span>Settlement</span><span><a href="${data.links.tx}" target="_blank">view tx ↗</a></span></div>
-         ${data.links.sellerNote?`<div class="rline"><span>João's payment note</span><span><a href="${data.links.sellerNote}" target="_blank">view ↗</a></span></div>`:''}
-         ${data.links.buyerNote?`<div class="rline"><span>Your refund note</span><span><a href="${data.links.buyerNote}" target="_blank">view ↗</a></span></div>`:''}
+         <div class="rline total"><span>Settlement</span><span><a href="${data.links.operator}" target="_blank">view on chain ↗</a></span></div>
+         <div class="rline"><span>Countersigned</span><span title="${data.settleProposalId}">Guardian ✓</span></div>
          <div class="rline"><span>Your rating</span><span>${ratedLine}</span></div>
          <div class="rline" id="refundLine"><span>Refund status</span><span>landing in your wallet…</span></div>`;
       // absorb the refund note in the background, then refresh the balance
       (async()=>{
         try{
-          if(data.buyerNoteId) await w.absorbNoteById(data.buyerNoteId);
+          if(data.refundNoteFileB64) await w.absorbNoteFile(data.refundNoteFileB64);
           else await w.waitAndAbsorb();
           await refreshBalance();
           const el=document.getElementById('refundLine');

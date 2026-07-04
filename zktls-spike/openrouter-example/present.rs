@@ -11,6 +11,7 @@ use hyper::header;
 
 use tlsn::attestation::{Attestation, CryptoProvider, Secrets, presentation::Presentation};
 use tlsn_formats::http::{BodyContent, HttpTranscript};
+use tlsn_formats::json::JsonValue;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -33,14 +34,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             builder.reveal_sent(h)?;
         }
     }
-    // Reveal request body `model` and `max_tokens`; keep the prompt (messages) hidden.
+    // Reveal request body `model` and `max_tokens` as full key-value pairs
+    // (label + value, so the verifier knows WHICH field the bytes are);
+    // keep the prompt (messages) hidden.
     if let Some(body) = request.body.as_ref() {
-        if let BodyContent::Json(json) = &body.content {
-            if let Some(m) = json.get("model") {
-                builder.reveal_sent(m)?;
+        if let BodyContent::Json(doc) = &body.content {
+            if let JsonValue::Object(obj) = &doc.root {
+            for kv in &obj.elems {
+                if ["model", "max_tokens"].contains(&kv.key.view().as_str().as_ref()) {
+                    builder.reveal_sent(kv.clone())?;
+                }
             }
-            if let Some(mt) = json.get("max_tokens") {
-                builder.reveal_sent(mt)?;
             }
         }
     }
@@ -52,13 +56,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         builder.reveal_recv(h)?;
     }
     if let Some(body) = response.body.as_ref() {
-        if let BodyContent::Json(json) = &body.content {
+        if let BodyContent::Json(doc) = &body.content {
+            if let JsonValue::Object(obj) = &doc.root {
             for path in ["id", "model", "usage"] {
-                if let Some(field) = json.get(path) {
-                    builder.reveal_recv(field)?;
-                } else {
-                    eprintln!("note: response field `{path}` not present, skipping");
+                match obj.elems.iter().find(|kv| kv.key.view().as_str() == path) {
+                    Some(kv) => {
+                        builder.reveal_recv(kv.clone())?;
+                    },
+                    None => eprintln!("note: response field `{path}` not present, skipping"),
                 }
+            }
             }
         }
     }

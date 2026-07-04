@@ -79,7 +79,7 @@
   <a class="brand" href="index.html">BAR<span class="hl">Ŧ</span>OK</a>
   <div class="hdr-right">
     <a class="earn-link" href="http://localhost:8787/seller.html" title="Rent out your spare AI and earn">Earn ⚡</a>
-    <button class="fundbtn hidden" id="fundBtn">Get BART</button>
+    <button class="fundbtn" id="fundBtn">Add credits</button>
     <span class="balance" id="balWrap" title="">BALANCE <b id="bal">…</b></span>
   </div>
 </header>
@@ -88,10 +88,10 @@
 <div class="scroll" id="s-request">
   <div class="inner">
     <h1>What brain<br>do you need?</h1>
-    <p class="sub">Pick a level. Every reply is priced per token and cryptographically verified.</p>
+    <p class="sub">Pick a brain. You pay only for what each answer uses, and every reply is proven genuine.</p>
     <div class="classes" id="classes"></div>
     <button class="btn btn--block" id="findBtn">Find a helper</button>
-    <p class="sub" id="findNote" style="font-size:12px;margin-top:12px;">Starting a session locks a 25,000 Ŧ budget in a Miden testnet escrow, like a ride-hailing card hold. Whatever you don't spend comes straight back when you end the chat.</p>
+    <p class="sub" id="findNote" style="font-size:12px;margin-top:12px;">We set aside a small hold of credits when you start a chat, like a ride hold. Whatever you don't use comes right back when you finish.</p>
   </div>
 </div>
 
@@ -145,7 +145,7 @@
     <div class="ratestars" id="stars"><span data-s="1">★</span><span data-s="2">★</span><span data-s="3">★</span><span data-s="4">★</span><span data-s="5">★</span></div>
     <div class="ratehint" id="rateHint">Tap to rate (ratings are cosmetic for now)</div>
     <div class="tags" id="tags"></div>
-    <button class="btn btn--block" id="submitRate">Settle up on Miden</button>
+    <button class="btn btn--block" id="submitRate">Finish &amp; get your credits back</button>
     <button class="btn btn--ghost btn--block" id="skipRate" style="margin-top:10px;">Skip rating &amp; settle</button>
   </div>
 </div>
@@ -177,6 +177,40 @@
   </div>
 </div>
 
+<!-- BUY CREDITS -->
+<div id="buyModal" class="proof-overlay hidden">
+  <div class="proof-card" style="max-width:420px;text-align:left;">
+    <div class="proof-h" style="text-align:center;">Add credits</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;text-align:center;">Ŧ1 = $0.01. Pay with a card, or use a code.</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+      <input placeholder="Card number" disabled style="grid-column:1/3;padding:9px;border:2.5px solid var(--ink);border-radius:8px;background:#f4f4f4;">
+      <input placeholder="MM/YY" disabled style="padding:9px;border:2.5px solid var(--ink);border-radius:8px;background:#f4f4f4;">
+      <input placeholder="CVC" disabled style="padding:9px;border:2.5px solid var(--ink);border-radius:8px;background:#f4f4f4;">
+    </div>
+    <button class="btn btn--block" disabled style="opacity:.5;margin-bottom:14px;">Card payments coming soon</button>
+    <div class="label" style="margin:6px 0;">or redeem a code</div>
+    <div style="display:flex;gap:8px;">
+      <input id="codeInput" placeholder="Discount code" style="flex:1;padding:10px;border:2.5px solid var(--ink);border-radius:8px;text-transform:uppercase;">
+      <button class="btn" id="redeemBtn">Redeem</button>
+    </div>
+    <div id="buyMsg" style="min-height:20px;font-size:13px;margin-top:10px;text-align:center;color:var(--cobalt);"></div>
+    <button class="btn btn--ghost btn--block" id="buyClose" style="margin-top:6px;">Close</button>
+  </div>
+</div>
+
+<!-- ACCOUNT -->
+<div id="authModal" class="proof-overlay hidden">
+  <div class="proof-card" style="max-width:380px;text-align:left;">
+    <div class="proof-h" style="text-align:center;">Create your account</div>
+    <div id="authWhy" style="font-size:13px;color:var(--muted);margin-bottom:14px;text-align:center;"></div>
+    <input id="authName" placeholder="Your name" style="width:100%;padding:10px;border:2.5px solid var(--ink);border-radius:8px;margin-bottom:8px;box-sizing:border-box;">
+    <input id="authPass" type="password" placeholder="Password" style="width:100%;padding:10px;border:2.5px solid var(--ink);border-radius:8px;margin-bottom:8px;box-sizing:border-box;">
+    <div id="authMsg" style="min-height:20px;font-size:13px;margin:4px 0;text-align:center;color:var(--coral);"></div>
+    <button class="btn btn--block" id="authGo">Create account</button>
+    <button class="btn btn--ghost btn--block" id="authClose" style="margin-top:6px;">Not now</button>
+  </div>
+</div>
+
 <script type="module">
   import { BartokWallet } from "/src/wallet.js";
 
@@ -187,7 +221,9 @@
     basic:{label:'Basic',price:1,model:'nemotron-nano-9b',desc:'fast, simple stuff'},
     genius:{label:'Genius',price:7,model:'llama-3.3-70b class',desc:'most capable, hard asks'},
   };
-  const USD_PER_UNIT=0.0001;
+  let USD_PER_BARTOK=0.01;   // set from /api/config
+  let HOLDS={basic:3000, genius:10000};
+  let ANON_CAP=500;
   const POS_TAGS=['Fast','Helpful','Accurate','Great value','Clear'];
   const NEG_TAGS=['Too slow','Unhelpful','Inaccurate','Overpriced'];
 
@@ -195,7 +231,7 @@
     spent:0, replies:0, rating:0, tags:[], faucet:null, settling:false};
   const $=id=>document.getElementById(id);
   const units=n=>Number(n).toLocaleString()+' Ŧ';
-  const usd=n=>'$'+(n*USD_PER_UNIT).toFixed(2);
+  const usd=n=>'$'+(n*USD_PER_BARTOK).toFixed(2);
   function show(scr){['request','matching','chat','rate','receipt'].forEach(s=>$('s-'+s).classList.toggle('hidden',s!==scr));window.scrollTo(0,0);}
 
   // ---- wallet ----
@@ -205,43 +241,75 @@
     try{
       const cfg=await fetch('/api/config').then(r=>r.json());
       state.faucet=cfg.faucet;
+      USD_PER_BARTOK=cfg.usdPerBartok; ANON_CAP=cfg.anonSpendCap;
+      HOLDS={basic:cfg.tiers.basic.hold, genius:cfg.tiers.genius.hold};
       const id=await w.init();
-      $('balWrap').title='wallet '+id;
+      $('balWrap').title=id;
+      await refreshAccount();
       await refreshBalance();
     }catch(e){ $('bal').textContent='wallet error'; console.error(e); }
   })();
+  async function refreshAccount(){
+    try{ state.account=await fetch('/api/account?buyerId='+w.id()).then(r=>r.json()); }
+    catch(_){ state.account={hasAccount:false, spent:0, redeemed:false}; }
+  }
   async function refreshBalance(){
     try{
       if(state.faucet){
         const b=await w.getBalance(state.faucet);
+        state.balance=b;
         $('bal').textContent=units(b);
-        $('bal').classList.toggle('low', b < 25000n);
-        $('fundBtn').classList.toggle('hidden', b >= 25000n);
+        $('bal').classList.toggle('low', b < BigInt(HOLDS.basic));
+        $('fundBtn').classList.remove('hidden');
         return b;
       }
     }catch(e){ console.error('balance',e); }
     return null;
   }
 
-  $('fundBtn').onclick=async()=>{
-    $('fundBtn').disabled=true;$('fundBtn').textContent='Checking…';
+  $('fundBtn').onclick=()=>openBuy();
+
+  // ---- Buy credits (mock card + discount code) ----
+  function openBuy(){ $('buyModal').classList.remove('hidden'); $('buyMsg').textContent=''; $('codeInput').value=''; }
+  function closeBuy(){ $('buyModal').classList.add('hidden'); }
+  $('buyClose').onclick=closeBuy;
+  $('buyModal').onclick=e=>{ if(e.target===$('buyModal')) closeBuy(); };
+  $('redeemBtn').onclick=async()=>{
+    const code=$('codeInput').value.trim();
+    if(!code){ $('buyMsg').textContent='Enter your code.'; return; }
+    $('redeemBtn').disabled=true; $('buyMsg').textContent='Redeeming…';
     try{
       await walletReady;
-      // Sweep any mint that already landed on-chain (e.g. a previous attempt
-      // that errored client-side) before minting again.
-      await w.waitAndAbsorb(12000,4000);
-      let bal=await refreshBalance();
-      if(bal===null||bal<25000n){
-        $('fundBtn').textContent='Minting…';
-        const r=await fetch('/api/faucet/fund',{method:'POST',body:JSON.stringify({buyerId:w.id()})}).then(r=>r.json());
-        if(r.error) throw new Error(r.error+(r.detail?(' — '+r.detail):''));
-        $('fundBtn').textContent='Waiting for testnet…';
-        await w.waitAndAbsorb();
-        await refreshBalance();
+      const r=await fetch('/api/credits/redeem',{method:'POST',body:JSON.stringify({buyerId:w.id(),code})}).then(r=>r.json());
+      if(r.error){
+        const msg={bad_code:'That code isn\'t valid.',already_redeemed:'You\'ve already used a code.'}[r.error]||r.error;
+        $('buyMsg').textContent=msg; $('redeemBtn').disabled=false; return;
       }
-      $('fundBtn').textContent='Get BART';
-    }catch(e){ alert('Mint failed: '+e.message); $('fundBtn').textContent='Get BART'; }
-    $('fundBtn').disabled=false;
+      $('buyMsg').textContent='Adding your credits (a few seconds)…';
+      await w.waitAndAbsorb();
+      await refreshAccount(); await refreshBalance();
+      $('buyMsg').textContent='Added '+units(r.amount)+' ✓';
+      setTimeout(closeBuy, 1200);
+    }catch(e){ $('buyMsg').textContent='Something went wrong: '+e.message; }
+    $('redeemBtn').disabled=false;
+  };
+
+  // ---- Account (auth-lite) ----
+  function openAuth(why){ $('authWhy').textContent=why||''; $('authMsg').textContent=''; $('authModal').classList.remove('hidden'); }
+  function closeAuth(){ $('authModal').classList.add('hidden'); }
+  $('authClose').onclick=closeAuth;
+  $('authModal').onclick=e=>{ if(e.target===$('authModal')) closeAuth(); };
+  $('authGo').onclick=async()=>{
+    const name=$('authName').value.trim(), password=$('authPass').value;
+    if(!password){ $('authMsg').textContent='Pick a password.'; return; }
+    $('authGo').disabled=true; $('authMsg').textContent='Creating…';
+    try{
+      const r=await fetch('/api/auth/register',{method:'POST',body:JSON.stringify({buyerId:w.id(),name,password})}).then(r=>r.json());
+      if(r.error){ $('authMsg').textContent=r.error==='exists'?'You already have an account.':r.error; $('authGo').disabled=false; return; }
+      await refreshAccount();
+      closeAuth();
+    }catch(e){ $('authMsg').textContent=e.message; }
+    $('authGo').disabled=false;
   };
 
   // ---- request screen ----
@@ -250,8 +318,9 @@
     Object.entries(TIERS).forEach(([key,t])=>{
       const div=document.createElement('div');
       div.className='cls'+(state.tier===key?' sel':'');
-      div.innerHTML=`<div><div class="name">${t.label}</div><div class="desc">${t.desc} · ${t.model}</div></div>
-        <div class="right"><div class="est">${t.price} Ŧ/token</div><div class="eta">≈ ${usd(t.price*300)} per reply</div></div>`;
+      const perReply=t.price*300;
+      div.innerHTML=`<div><div class="name">${t.label}</div><div class="desc">${t.desc}${key==='genius'?' · account needed':''}</div></div>
+        <div class="right"><div class="est">${units(perReply)}<span style="font-size:11px;color:var(--muted)"> /reply</span></div><div class="eta">about a typical answer</div></div>`;
       div.onclick=()=>{state.tier=key;renderClasses();};
       $('classes').appendChild(div);
     });
@@ -264,16 +333,16 @@
     $('matchSub').textContent='Matching you with João…';
     try{
       const s=await fetch('/api/session/start',{method:'POST',body:JSON.stringify({buyerId:w.id(),tier:state.tier})}).then(r=>r.json());
+      if(s.error==='account_required'){ show('request'); openAuth('Create a free account to unlock the Genius brain.'); return; }
       if(s.error) throw new Error(s.error);
       state.sessionId=s.sessionId; state.faucet=s.escrowTemplate.faucet;
       state.budget=s.escrowTemplate.budget; state.remaining=state.budget;
       const bal=await refreshBalance();
-      if(bal!==null && bal < BigInt(state.budget)) throw new Error('You need '+units(state.budget)+', hit "Get BART" first.');
-      $('matchTitle').innerHTML='Locking your<br>budget…';
-      $('matchSub').textContent='Escrowing '+units(state.budget)+' on Miden testnet (proving in your browser via the remote prover, ~1-2 min).';
+      if(bal!==null && bal < BigInt(state.budget)){ show('request'); openBuy(); return; }
+      $('matchTitle').innerHTML='Setting aside<br>your credits…';
+      $('matchSub').textContent='Holding '+units(state.budget)+' for this chat. The rest comes back when you finish. (Securing it takes ~1-2 min.)';
       const {noteB64}=await w.fundEscrow(s.escrowTemplate);
       await fetch('/api/session/escrow',{method:'POST',body:JSON.stringify({sessionId:state.sessionId,noteB64})});
-      state.escrowNoteId=noteId;
       await refreshBalance();
       enterChat();
     }catch(e){
@@ -284,17 +353,18 @@
 
   // ---- chat ----
   function enterChat(){
+    state.warnedTrunc=false;
     state.spent=0; state.replies=0; state.settling=false;
     $('dbAvatar').textContent=JOAO.emoji; $('dbName').textContent=JOAO.name;
     $('dbBudget').textContent='budget '+units(state.remaining);
     $('thread').innerHTML='';
-    addRow('ai-sys','Connected to '+JOAO.name+' '+JOAO.emoji+'. Every reply is priced per token and its model is cryptographically verified. Escrow: '+units(state.budget)+'.');
+    addRow('ai-sys','Connected to '+JOAO.name+' '+JOAO.emoji+'. I remember our conversation. Every reply shows its price and is proven genuine. Hold set aside: '+units(state.budget)+'.');
     updateHint(); refreshSend(); show('chat'); $('input').focus();
   }
-  $('seg').querySelectorAll('button').forEach(b=>b.onclick=()=>{$('seg').querySelectorAll('button').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');state.tier=b.dataset.tier;updateHint();});
+  $('seg').querySelectorAll('button').forEach(b=>b.onclick=()=>{ if(b.dataset.tier==='genius' && (!state.account||!state.account.hasAccount)){ openAuth('Create a free account to unlock the Genius brain.'); return; } $('seg').querySelectorAll('button').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');state.tier=b.dataset.tier;updateHint();});
   function updateHint(){
     const t=TIERS[state.tier];
-    $('tierHint').textContent=t.desc+' · '+t.price+' Ŧ/token';
+    $('tierHint').textContent=t.desc;
     $('dbBudget').textContent='budget '+units(state.remaining);
   }
   const input=$('input');
@@ -311,7 +381,7 @@
     $('thread').appendChild(row);$('chat').scrollTop=$('chat').scrollHeight;return row;
   }
 
-  const STAGE_LABELS={answer:'Finding your answer…', verify:"Checking it's real…", settle:'Settling up on Miden…'};
+  const STAGE_LABELS={answer:'Finding your answer…', verify:"Checking it's real…", settle:'Wrapping up your chat…'};
   async function sendMsg(){ const text=input.value.trim(); if(!text) return; input.value=''; input.style.height='auto'; await runMessage(text, state.tier, false); }
 
   // The aha moment: any Basic reply gets an "Ask Genius" boost that re-runs the
@@ -353,21 +423,28 @@
         ai.querySelector('.bubble').appendChild(det);
       }
       ai._price.className='price';
-      ai._price.innerHTML='<span class="amt">&minus;'+units(data.charge)+' <span style="color:var(--muted)">≈ '+usd(data.charge)+'</span></span>'
+      ai._price.innerHTML='<span class="amt">&minus;'+units(data.charge)+'</span>'
         +'<span class="v" title="Tap: what does verified mean?">✓ verified</span>'
         +'<span class="model">'+data.model+'</span>';
       ai._price.querySelector('.v').onclick=()=>openProof(data.model,data.tokens,data.charge);
       if(tier==='basic'){
         const boost=document.createElement('span');
-        boost.className='boost'; boost.textContent='↑ Ask Genius ('+TIERS.genius.price+'×)';
-        boost.title='Re-ask the same question with the top-tier model — compare for yourself';
-        boost.onclick=()=>{boost.remove();runMessage(text,'genius',true);};
+        boost.className='boost'; boost.textContent='↑ Ask Genius';
+        boost.title='Re-ask the same question with the top-tier brain — compare for yourself';
+        boost.onclick=()=>{ if(!state.account||!state.account.hasAccount){ openAuth('Create a free account to unlock the Genius brain.'); return; } boost.remove(); runMessage(text,'genius',true); };
         ai._price.appendChild(boost);
       }
+      // Conversation memory: once older turns start dropping, say so once.
+      if(data.truncated && !state.warnedTrunc){ state.warnedTrunc=true; addRow('ai-sys','(Older messages just slipped out of João’s memory — he keeps the most recent part of the chat.)'); }
       state.spent=data.totalCharge; state.remaining=data.remaining; state.replies++;
     }catch(e){
-      const busy=e.message==='BUSY';
-      ai.querySelector('.bubble').textContent=busy?'João’s free lanes are rate-limited right now — give it a few seconds and try again.':('Sorry, something went wrong: '+e.message);
+      const m=e.message;
+      let msg='Sorry, something went wrong: '+m;
+      if(m==='BUSY') msg='João’s free lanes are busy right now — give it a few seconds and try again.';
+      else if(m==='hold_exhausted') msg='This chat’s hold is used up. Finish here to get your unused credits back, then start a fresh chat.';
+      else if(m==='anon_cap'){ msg='You’ve used your free trial. Create an account to keep going.'; openAuth('Create a free account to keep chatting.'); }
+      else if(m==='account_required'){ msg='The Genius brain needs an account.'; openAuth('Create a free account to unlock the Genius brain.'); }
+      ai.querySelector('.bubble').textContent=msg;
       ai._price.className='price';ai._price.innerHTML='';
     }
     state.busy=false;refreshSend();updateHint();$('chat').scrollTop=$('chat').scrollHeight;
@@ -378,7 +455,7 @@
     if(state.replies===0){ show('request'); return; }
     state.rating=0;state.tags=[];
     $('rAvatar').textContent=JOAO.emoji;$('rName').textContent=JOAO.name;
-    $('rTripMeta').textContent=state.replies+(state.replies===1?' reply':' replies')+' · '+units(state.spent)+' ≈ '+usd(state.spent);
+    $('rTripMeta').textContent=state.replies+(state.replies===1?' reply':' replies')+' · '+units(state.spent)+' used';
     $('stars').querySelectorAll('span').forEach(s=>s.classList.remove('on'));
     $('rateHint').textContent='Tap to rate (ratings are cosmetic for now)';$('tags').innerHTML='';
     show('rate');
@@ -407,8 +484,8 @@
 
   async function settleUp(){
     if(state.settling) return; state.settling=true;
-    $('receiptBody').innerHTML='<div class="rline"><span>Settling on Miden testnet…</span><span class="dots"><span></span><span></span><span></span></span></div>'
-      +'<div class="rline" style="color:var(--muted)">One transaction splits the escrow: João gets his charge, you get the rest back. ~30-60s.</div>';
+    $('receiptBody').innerHTML='<div class="rline"><span>Wrapping up…</span><span class="dots"><span></span><span></span><span></span></span></div>'
+      +'<div class="rline" style="color:var(--muted)">Paying João for what you used and returning the rest. ~30-60s.</div>';
     show('receipt');
     try{
       const r=await fetch('/api/session/end',{method:'POST',body:JSON.stringify({sessionId:state.sessionId})});
@@ -419,10 +496,10 @@
       $('receiptBody').innerHTML=
         `<div class="rline"><span>Helper</span><span>${JOAO.emoji} ${JOAO.name}</span></div>
          <div class="rline"><span>Replies</span><span>${state.replies}</span></div>
-         <div class="rline"><span>Charged</span><span>${units(data.charge)} ≈ ${usd(data.charge)}</span></div>
-         <div class="rline"><span>Refunded to you</span><span>${units(data.refund)} ≈ ${usd(data.refund)}</span></div>
-         <div class="rline total"><span>Settlement</span><span><a href="${data.links.operator}" target="_blank">view on chain ↗</a></span></div>
-         <div class="rline"><span>Countersigned</span><span title="${data.settleProposalId}">Guardian ✓</span></div>
+         <div class="rline"><span>You used</span><span>${units(data.charge)}</span></div>
+         <div class="rline"><span>Back to you</span><span>${units(data.refund)}</span></div>
+         <div class="rline total"><span>Settlement</span><span><a href="${data.links.operator}" target="_blank">view record ↗</a></span></div>
+         <div class="rline"><span>Double-checked</span><span title="${data.settleProposalId}">✓ secured</span></div>
          <div class="rline"><span>Your rating</span><span>${ratedLine}</span></div>
          <div class="rline" id="refundLine"><span>Refund status</span><span>landing in your wallet…</span></div>`;
       // absorb the refund note in the background, then refresh the balance
@@ -437,7 +514,7 @@
       })();
     }catch(e){
       $('receiptBody').innerHTML='<div class="rline"><span>Settlement failed</span><span>'+e.message+'</span></div>'
-        +'<div class="rline" style="color:var(--muted)">Your escrow note is still on-chain and can be settled later.</div>';
+        +'<div class="rline" style="color:var(--muted)">Your credits are safe and can be recovered.</div>';
     }
     state.settling=false;
   }

@@ -10,7 +10,7 @@
 
 use std::{env, future::IntoFuture};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use futures::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use http_body_util::Full;
 use hyper::{Request, body::Bytes};
@@ -42,7 +42,7 @@ const SERVER_DOMAIN: &str = "openrouter.ai";
 const ROUTE: &str = "/api/v1/chat/completions";
 const USER_AGENT: &str = "bartok-zktls-spike/0.1";
 // MPC preprocessing limits. Keep modest; larger = slower MPC.
-const MAX_SENT_DATA: usize = 1 << 12; // 4 KiB (request + headers + body)
+const MAX_SENT_DATA: usize = 1 << 14; // 16 KiB (request + headers + body; fits bounded chat history)
 const MAX_RECV_DATA: usize = 1 << 16; // 64 KiB (response)
 
 /// Real web-PKI root store (Mozilla roots, DER-encoded).
@@ -69,16 +69,26 @@ async fn prover<S: AsyncWrite + AsyncRead + Send + Sync + Unpin + 'static>(socke
     let api_key = env::var("OPENROUTER_API_KEY")
         .map_err(|_| anyhow::anyhow!("set OPENROUTER_API_KEY (see zktls-spike/.env.example)"))?;
     let model = env::var("MODEL").unwrap_or_else(|_| "meta-llama/llama-3.1-8b-instruct:free".into());
-    let prompt = env::var("PROMPT")
-        .unwrap_or_else(|_| "In one sentence, what is a zero-knowledge proof?".into());
+    let max_tokens: u32 = env::var("MAX_TOKENS").ok().and_then(|v| v.parse().ok()).unwrap_or(1024);
+
+    // messages: prefer a full JSON array in MESSAGES_JSON (conversation memory,
+    // last N turns); fall back to a single-turn PROMPT. MAX_SENT_DATA (16 KiB)
+    // caps how much history fits in the notarized request.
+    let messages: serde_json::Value = match env::var("MESSAGES_JSON") {
+        Ok(j) => serde_json::from_str(&j).context("MESSAGES_JSON is not valid JSON")?,
+        Err(_) => {
+            let prompt = env::var("PROMPT")
+                .unwrap_or_else(|_| "In one sentence, what is a zero-knowledge proof?".into());
+            serde_json::json!([{ "role": "user", "content": prompt }])
+        },
+    };
 
     // The body we send. max_tokens is the cost ceiling; usage comes back in the
-    // response. 1024 leaves room for reasoning models that think before they
-    // answer (MAX_RECV_DATA is 64 KiB, so the transcript has ample headroom).
+    // response (MAX_RECV_DATA is 64 KiB, ample for the transcript).
     let body = serde_json::json!({
         "model": model,
-        "max_tokens": 1024,
-        "messages": [{ "role": "user", "content": prompt }],
+        "max_tokens": max_tokens,
+        "messages": messages,
     })
     .to_string();
 

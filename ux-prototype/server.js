@@ -25,23 +25,37 @@ const MIDEN_BIN = path.join(ROOT, 'miden', 'target', 'release');
 const ENV_FILE = path.join(ROOT, 'zktls-spike', '.env');
 const ACCOUNTS = JSON.parse(fs.readFileSync(path.join(ROOT, 'miden', 'accounts.json'), 'utf8'));
 
+// ===== ECONOMICS — the ONE place to tune BARTOK's money =====================
+// The Bartok (Ŧ) is a stablecoin pegged to the cheapest LLM token: 1 Basic-model
+// token ALWAYS costs 1 Ŧ (the peg anchor). Other tiers are basic-token multiples.
+const CONFIG = {
+  usdPerBartok: 0.01,          // display rate on the buy-credits page only
+  anonSpendCapBartok: 500,     // spend allowed before an account is required (=$5)
+  freeGrantBartok: 1000,       // ILOVEBARTOK grant (=$10)
+  discountCode: 'ILOVEBARTOK',
+  geniusMaxTokens: 512,        // cap so a Genius reply can't blow the hold
+  // Session hold per tier, capped by the wallet's balance browser-side. Small
+  // by design (a low-income Rita, not a $250 pre-auth).
+  holdBartok: { basic: 3000, genius: 10000 },
+};
+
 // João's two real tiers: distinct free OpenRouter models, distinct per-token
-// prices. The 429 fallback stays WITHIN a tier so the verified model always
-// matches what the buyer paid for.
+// prices (in Bartoks). basic.pricePerToken = 1 is the PEG ANCHOR — do not change
+// without redefining the Bartok. The 429 fallback stays WITHIN a tier so the
+// verified model always matches what the buyer paid for.
 const TIERS = {
   basic: {
     models: ['nvidia/nemotron-nano-9b-v2:free', 'openai/gpt-oss-20b:free'],
-    pricePerToken: 1,
+    pricePerToken: 1,          // PEG ANCHOR: 1 Ŧ = 1 basic token, always
+    requiresAccount: false,
   },
   genius: {
     models: ['meta-llama/llama-3.3-70b-instruct:free', 'qwen/qwen3-next-80b-a3b-instruct:free',
       'openai/gpt-oss-120b:free', 'nvidia/nemotron-3-super-120b-a12b:free'],
-    pricePerToken: 7,
+    pricePerToken: 7,          // 7x the Basic rate
+    requiresAccount: true,     // anonymous users are Basic-only
   },
 };
-const ESCROW_BUDGET = 25000; // one budget for every session; tiers only change per-message price
-const FUND_AMOUNT = 50000;
-const USD_PER_UNIT = 0.0001;
 
 // ponytail: sessions are in-memory only — a server restart loses session state.
 // Funds are safe (the escrow note stays consumable on-chain by the operator);
@@ -93,11 +107,29 @@ function lastJson(out) {
 }
 
 // ---- the zkTLS answer pipeline (one message) --------------------------------
+// Bounded conversation history: keep the last turns that fit a byte budget
+// (must stay under the notarized request's MAX_SENT_DATA of 16 KiB). Returns
+// { messages, truncated } — truncated=true when older turns were dropped.
+const HISTORY_BUDGET = 9000; // conservative vs 16 KiB (headers + framing + reply schema)
+function buildMessages(history, prompt) {
+  const turns = [...history, { role: 'user', content: prompt }];
+  let kept = [], size = 0, truncated = false;
+  for (let i = turns.length - 1; i >= 0; i--) {
+    const len = JSON.stringify(turns[i]).length;
+    if (size + len > HISTORY_BUDGET && kept.length) { truncated = true; break; }
+    kept.unshift(turns[i]); size += len;
+  }
+  return { messages: kept, truncated };
+}
+
 let busy = false;
-async function runAnswer(prompt, tier, onStage) {
+async function runAnswer(prompt, tier, history, onStage) {
   const tierCfg = TIERS[tier];
   if (!tierCfg) throw new Error(`unknown tier: ${tier}`);
-  const env = { ...process.env, OPENROUTER_API_KEY: loadKey(), PROMPT: prompt,
+  const { messages, truncated } = buildMessages(history || [], prompt);
+  const maxTokens = tier === 'genius' ? CONFIG.geniusMaxTokens : 1024;
+  const env = { ...process.env, OPENROUTER_API_KEY: loadKey(),
+    MESSAGES_JSON: JSON.stringify(messages), MAX_TOKENS: String(maxTokens),
     RUST_LOG: 'error,openrouter_prove=info' };
 
   // 1) zkTLS: notarize the real model call (429 fallback within the tier only)
@@ -147,7 +179,7 @@ async function runAnswer(prompt, tier, onStage) {
       : '(no text returned)';
   }
 
-  return { reply, reasoning, model: oracle.model, tier, tokens: oracle.total_tokens, charge: oracle.charge };
+  return { reply, reasoning, truncated, model: oracle.model, tier, tokens: oracle.total_tokens, charge: oracle.charge };
 }
 
 // ---- helpers ----------------------------------------------------------------
@@ -170,7 +202,23 @@ function ndjsonHead(res) {
   return obj => res.write(JSON.stringify(obj) + '\n');
 }
 
-const usd = units => Number((units * USD_PER_UNIT).toFixed(4));
+const usd = units => Number((units * CONFIG.usdPerBartok).toFixed(2));
+
+// ---- auth-lite: {walletId -> {name, salt, hash}} + per-wallet spend + redeemed
+// ponytail: a flat JSON file, not a DB. Good enough for the first Rita cohort.
+const USERS_FILE = path.join(ROOT, 'ux-prototype', 'users.json');
+function loadUsers() {
+  try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); } catch { return {}; }
+}
+function saveUsers(u) { fs.writeFileSync(USERS_FILE, JSON.stringify(u, null, 2)); }
+const users = loadUsers();
+function hasAccount(walletId) { return !!(users[walletId] && users[walletId].hash); }
+function spentBy(walletId) { return (users[walletId] && users[walletId].spent) || 0; }
+function recordSpend(walletId, amount) {
+  users[walletId] = users[walletId] || {};
+  users[walletId].spent = spentBy(walletId) + amount;
+  saveUsers(users);
+}
 
 // ---- HTTP server ------------------------------------------------------------
 const server = http.createServer(async (req, res) => {
@@ -188,7 +236,11 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && req.url === '/api/config') {
     json(res, 200, { faucet: ACCOUNTS.faucet, seller: ACCOUNTS.sellerMultisig,
-      escrowBudget: ESCROW_BUDGET, usdPerUnit: USD_PER_UNIT, fundAmount: FUND_AMOUNT });
+      usdPerBartok: CONFIG.usdPerBartok, anonSpendCap: CONFIG.anonSpendCapBartok,
+      freeGrant: CONFIG.freeGrantBartok,
+      tiers: Object.fromEntries(Object.entries(TIERS).map(([k, v]) =>
+        [k, { pricePerToken: v.pricePerToken, requiresAccount: v.requiresAccount,
+          hold: CONFIG.holdBartok[k] }])) });
     return;
   }
 
@@ -196,17 +248,21 @@ const server = http.createServer(async (req, res) => {
     const { buyerId, tier = 'basic' } = JSON.parse(await readBody(req) || '{}');
     if (!buyerId) return json(res, 400, { error: 'missing buyerId' });
     if (!TIERS[tier]) return json(res, 400, { error: 'unknown tier' });
+    if (TIERS[tier].requiresAccount && !hasAccount(buyerId)) {
+      return json(res, 403, { error: 'account_required', tier });
+    }
+    const budget = CONFIG.holdBartok[tier];
     const p = await runMiden('build_escrow',
-      ['--buyer', buyerId, '--budget', String(ESCROW_BUDGET)], 60000);
+      ['--buyer', buyerId, '--budget', String(budget)], 60000);
     const params = lastJson(p.out);
     if (!params) return json(res, 500, { error: 'build_escrow failed', detail: p.out.slice(-400) });
     const sessionId = crypto.randomUUID();
-    sessions.set(sessionId, { buyerId, tier, params, escrowNoteB64: null,
+    sessions.set(sessionId, { buyerId, tier, params, budget, escrowNoteB64: null,
       charges: [], settled: false, createdAt: Date.now() });
-    console.log(`[session] ${sessionId} buyer=${buyerId} tier=${tier}`);
+    console.log(`[session] ${sessionId} buyer=${buyerId} tier=${tier} hold=${budget}`);
     json(res, 200, { sessionId, escrowTemplate: {
       requestB64: params.requestB64, noteB64: params.noteB64,
-      faucet: ACCOUNTS.faucet, budget: ESCROW_BUDGET,
+      faucet: ACCOUNTS.faucet, budget,
     } });
     return;
   }
@@ -218,7 +274,7 @@ const server = http.createServer(async (req, res) => {
     if (!noteB64) return json(res, 400, { error: 'missing noteB64 (private escrow needs full note details)' });
     s.escrowNoteB64 = noteB64;
     console.log(`[session] ${sessionId} escrow registered`);
-    json(res, 200, { ok: true, budget: ESCROW_BUDGET });
+    json(res, 200, { ok: true, budget: s.budget });
     return;
   }
 
@@ -232,26 +288,37 @@ const server = http.createServer(async (req, res) => {
       if (s.settled) throw new Error('session already settled');
       if (!prompt) throw new Error('missing prompt');
       const msgTier = tier || s.tier;
+      if (TIERS[msgTier].requiresAccount && !hasAccount(s.buyerId)) {
+        throw new Error('account_required');
+      }
+      // Anonymous spend cap: block once cumulative spend would cross it.
+      if (!hasAccount(s.buyerId) && spentBy(s.buyerId) >= CONFIG.anonSpendCapBartok) {
+        throw new Error('anon_cap');
+      }
       if (busy) throw new Error('BUSY');
       busy = true;
       try {
         const spent = s.charges.reduce((a, c) => a + c.charge, 0);
         console.log(`[chat] tier=${msgTier} "${prompt.slice(0, 60)}"`);
         sellerBroadcast('job_started', { tier: msgTier, model: TIERS[msgTier].models[0] });
-        const result = await runAnswer(prompt, msgTier, stage => emit({ type: 'stage', stage }));
-        if (spent + result.charge > ESCROW_BUDGET) {
-          throw new Error(`budget exhausted: ${spent} + ${result.charge} > ${ESCROW_BUDGET}`);
+        s.history = s.history || [];
+        const result = await runAnswer(prompt, msgTier, s.history, stage => emit({ type: 'stage', stage }));
+        if (spent + result.charge > s.budget) {
+          throw new Error('hold_exhausted');
         }
         s.charges.push(result);
+        s.history.push({ role: 'user', content: prompt }, { role: 'assistant', content: result.reply });
+        recordSpend(s.buyerId, result.charge);
         sellerStats.replies += 1;
         sellerStats.earned += result.charge;
         sellerBroadcast('job_done', { tier: msgTier, model: result.model,
           tokens: result.tokens, charge: result.charge, chargeUsd: usd(result.charge) });
         const totalCharge = spent + result.charge;
         console.log(`[chat] model=${result.model} tokens=${result.tokens} charge=${result.charge}`);
-        emit({ type: 'done', reply: result.reply, reasoning: result.reasoning, model: result.model, tier: msgTier,
+        emit({ type: 'done', reply: result.reply, reasoning: result.reasoning,
+          truncated: result.truncated, model: result.model, tier: msgTier,
           tokens: result.tokens, charge: result.charge, chargeUsd: usd(result.charge),
-          totalCharge, remaining: ESCROW_BUDGET - totalCharge });
+          totalCharge, remaining: s.budget - totalCharge });
       } finally {
         busy = false;
       }
@@ -311,15 +378,52 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'POST' && req.url === '/api/faucet/fund') {
-    const { buyerId } = JSON.parse(await readBody(req) || '{}');
+  // Redeem a discount code for free credits (a private BART mint). The mint note
+  // details come back as bytes so Rita consumes them via a Guardian proposal.
+  if (req.method === 'POST' && req.url === '/api/credits/redeem') {
+    const { buyerId, code } = JSON.parse(await readBody(req) || '{}');
     if (!buyerId) return json(res, 400, { error: 'missing buyerId' });
-    console.log(`[fund] ${buyerId}`);
+    if ((code || '').trim().toUpperCase() !== CONFIG.discountCode) {
+      return json(res, 400, { error: 'bad_code' });
+    }
+    users[buyerId] = users[buyerId] || {};
+    if (users[buyerId].redeemed) return json(res, 400, { error: 'already_redeemed' });
+    console.log(`[credits] ${buyerId} redeem ${CONFIG.discountCode}`);
     const r = await runMiden('fund_buyer',
-      ['--buyer', buyerId, '--amount', String(FUND_AMOUNT)], 240000);
+      ['--buyer', buyerId, '--amount', String(CONFIG.freeGrantBartok)], 240000);
     const out = lastJson(r.out);
     if (r.code !== 0 || !out) return json(res, 500, { error: 'mint failed', detail: r.out.slice(-400) });
-    json(res, 200, { ...out, amount: FUND_AMOUNT });
+    users[buyerId].redeemed = true;
+    saveUsers(users);
+    json(res, 200, { ...out, amount: CONFIG.freeGrantBartok, noteFileB64: out.noteFileB64 || null });
+    return;
+  }
+
+  // Auth-lite: create/login a basic account bound to the wallet id.
+  if (req.method === 'POST' && (req.url === '/api/auth/register' || req.url === '/api/auth/login')) {
+    const { buyerId, name, password } = JSON.parse(await readBody(req) || '{}');
+    if (!buyerId || !password) return json(res, 400, { error: 'missing fields' });
+    const register = req.url.endsWith('/register');
+    if (register) {
+      if (hasAccount(buyerId)) return json(res, 400, { error: 'exists' });
+      const salt = crypto.randomBytes(16).toString('hex');
+      const hash = crypto.scryptSync(password, salt, 32).toString('hex');
+      users[buyerId] = { ...(users[buyerId] || {}), name: name || 'Rita', salt, hash };
+      saveUsers(users);
+      return json(res, 200, { ok: true, name: users[buyerId].name });
+    }
+    const u = users[buyerId];
+    if (!u || !u.hash) return json(res, 401, { error: 'no_account' });
+    const hash = crypto.scryptSync(password, u.salt, 32).toString('hex');
+    if (hash !== u.hash) return json(res, 401, { error: 'bad_password' });
+    return json(res, 200, { ok: true, name: u.name });
+  }
+
+  // Whether this wallet has an account (drives the UI gates).
+  if (req.method === 'GET' && req.url.startsWith('/api/account?')) {
+    const id = new URL(req.url, 'http://x').searchParams.get('buyerId') || '';
+    json(res, 200, { hasAccount: hasAccount(id), name: (users[id] || {}).name || null,
+      spent: spentBy(id), redeemed: !!(users[id] || {}).redeemed });
     return;
   }
 

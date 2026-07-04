@@ -16,6 +16,26 @@ Bartok-Guardian = dedicated clone `~/Code/bartok-guardian` (branch `bartok`, por
 
 Accounts (this run): Rita `0x7495ed…`, operator `0x3edc50…`, João `0xad383b…`, BART faucet `0x7d6d02…`. All in miden/accounts.json.
 
+- [x] **P4 Rita UX**: Credits/Bartoks (Ŧ) currency, no dollars in chat; vocabulary sweep
+  (no Miden/Guardian/escrow/token/multisig in Rita's view); conversation memory
+  (MESSAGES_JSON, MAX_SENT_DATA 16KiB, genius max_tokens 512) + friendly truncation notice.
+- [x] **P4b funnel**: ONE ECONOMICS config block (peg anchor 1Ŧ=1 basic token, holds, caps);
+  buy-credits modal + ILOVEBARTOK (Ŧ1000 private mint); auth-lite (scrypt, users.json) with
+  Genius-needs-account + Ŧ500 anon spend cap; tier-based dynamic holds (Basic Ŧ3000/Genius Ŧ10000, balance-capped).
+- [x] **P5 docs**: DEMO.md rewritten for the Rita/Guardian flow; stitch.sh marked cycle-1.
+- [~] **P6 ship**: deploy glue DONE (bridge CORS + /guardian reverse-proxy so one tunnel
+  serves app API + Guardian; VITE_BARTOK_BACKEND config; vercel.json COOP/COEP; serve.sh +
+  tunnel.sh). Vite prod build green. REMAINING (needs Gaylord): actual `vercel deploy` with
+  his Pro account + running the cloudflared tunnel + a fresh-Rita acceptance run.
+
+## Cycle 2 simplifications (ponytail, documented)
+- Mint stays PUBLIC (Rita absorbs via listAvailable). Private mint (decision 6) deferred:
+  the sensitive privacy (escrow/charge/refund) is already private; mint privacy is low value,
+  high plumbing (fund_buyer would need to emit a NoteFile). Flagged, not built.
+- No mid-session auto re-hold: one balance-capped hold per session; if exhausted, Rita
+  finishes (gets the refund) and starts a fresh chat. Simpler than sequential re-holds.
+- Courier animation: functional staged copy in place; elaborate animation deferred to polish.
+
 ## Cycle 2 gotchas (hard-won 2026-07-04)
 - **DUAL @miden-sdk WASM INSTANCE = the big one.** ux-prototype (0.15.3) + the linked
   Guardian multisig client (was 0.15.0) each loaded their own @miden-sdk WASM. wasm-bindgen

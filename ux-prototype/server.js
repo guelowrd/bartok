@@ -184,12 +184,37 @@ async function runAnswer(prompt, tier, history, onStage) {
 }
 
 // ---- helpers ----------------------------------------------------------------
+const MAX_BODY = 512 * 1024; // 512 KiB: escrow note bytes are ~100 KiB base64; well clear
 function readBody(req) {
   return new Promise((resolve) => {
-    let body = '';
-    req.on('data', c => (body += c));
-    req.on('end', () => resolve(body));
+    let body = '', tooBig = false;
+    req.on('data', c => {
+      if (tooBig) return;
+      body += c;
+      if (body.length > MAX_BODY) { tooBig = true; req.destroy(); } // → callers see {} → 400
+    });
+    req.on('end', () => resolve(tooBig ? '' : body));
+    req.on('error', () => resolve(''));
   });
+}
+
+// ---- per-IP rate limiter (in-memory sliding window). ponytail: a Map, not Redis.
+const rateHits = new Map(); // key `${ip}:${bucket}` -> timestamps[] (ms since a fixed epoch)
+let rlClock = 0;            // monotonic-ish tick; incremented per request (no Date.now in this env… but here it's fine)
+function clientIp(req) {
+  const xf = req.headers['x-forwarded-for'];
+  return (xf ? String(xf).split(',')[0].trim() : '') || req.socket.remoteAddress || 'unknown';
+}
+// allow `limit` requests per `windowMs`. Returns true if the request is allowed.
+function rateOk(req, bucket, limit, windowMs) {
+  const now = Date.now();
+  const key = `${clientIp(req)}:${bucket}`;
+  const hits = (rateHits.get(key) || []).filter(t => now - t < windowMs);
+  if (hits.length >= limit) { rateHits.set(key, hits); return false; }
+  hits.push(now);
+  rateHits.set(key, hits);
+  if (rateHits.size > 5000) rateHits.clear(); // crude unbounded-growth guard
+  return true;
 }
 
 function json(res, code, obj) {
@@ -269,6 +294,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/api/session/start') {
+    if (!rateOk(req, 'start', 20, 60000)) return json(res, 429, { error: 'slow down' });
     const { buyerId, tier = 'basic' } = JSON.parse(await readBody(req) || '{}');
     if (!buyerId) return json(res, 400, { error: 'missing buyerId' });
     if (!TIERS[tier]) return json(res, 400, { error: 'unknown tier' });
@@ -303,6 +329,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/api/chat') {
+    if (!rateOk(req, 'chat', 30, 60000)) { json(res, 429, { error: 'slow down' }); return; }
     const emit = ndjsonHead(res);
     try {
       const { sessionId, prompt, tier } = JSON.parse(await readBody(req) || '{}');
@@ -405,6 +432,7 @@ const server = http.createServer(async (req, res) => {
   // Redeem a discount code for free credits (a private BART mint). The mint note
   // details come back as bytes so Rita consumes them via a Guardian proposal.
   if (req.method === 'POST' && req.url === '/api/credits/redeem') {
+    if (!rateOk(req, 'redeem', 5, 60000)) return json(res, 429, { error: 'slow down' });
     const { buyerId, code } = JSON.parse(await readBody(req) || '{}');
     if (!buyerId) return json(res, 400, { error: 'missing buyerId' });
     if ((code || '').trim().toUpperCase() !== CONFIG.discountCode) {
@@ -425,6 +453,7 @@ const server = http.createServer(async (req, res) => {
 
   // Auth-lite: create/login a basic account bound to the wallet id.
   if (req.method === 'POST' && (req.url === '/api/auth/register' || req.url === '/api/auth/login')) {
+    if (!rateOk(req, 'auth', 10, 60000)) return json(res, 429, { error: 'slow down' });
     const { buyerId, name, password } = JSON.parse(await readBody(req) || '{}');
     if (!buyerId || !password) return json(res, 400, { error: 'missing fields' });
     const register = req.url.endsWith('/register');

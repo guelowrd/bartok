@@ -1,0 +1,1 @@
+{"version":3,"file":"options.d.ts","sourceRoot":"","sources":["../../src/transaction/options.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,SAAS,EAAE,IAAI,EAAE,MAAM,sBAAsB,CAAC;AAC5D,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,aAAa,CAAC;AAEnD,MAAM,WAAW,gBAAgB;IAC/B,IAAI,CAAC,EAAE,IAAI,CAAC;IACZ,kBAAkB,CAAC,EAAE,SAAS,CAAC;IAC/B,eAAe,CAAC,EAAE,eAAe,CAAC;IAClC,gBAAgB,CAAC,EAAE,MAAM,CAAC;CAC3B"}

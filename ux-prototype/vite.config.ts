@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import { fileURLToPath } from "node:url";
 import { midenVitePlugin } from "@miden-sdk/vite-plugin";
 
 export default defineConfig({
@@ -9,7 +10,8 @@ export default defineConfig({
     dedupe: ["@miden-sdk/miden-sdk"],
     // Absolute alias so the app AND the linked Guardian packages resolve the
     // SDK to ONE module file = one WASM instance (file: links escape dedupe).
-    alias: { "@miden-sdk/miden-sdk": "/Users/gaylordwarner/Code/bartok/ux-prototype/node_modules/@miden-sdk/miden-sdk" },
+    // resolved relative to this config → portable across Mac + Vercel build
+    alias: { "@miden-sdk/miden-sdk": fileURLToPath(new URL("./node_modules/@miden-sdk/miden-sdk", import.meta.url)) },
   },
   server: {
     proxy: {

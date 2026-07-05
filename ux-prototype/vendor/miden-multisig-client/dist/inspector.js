@@ -1,0 +1,131 @@
+/**
+ * Account Inspector - Inspects account storage to detect multisig configuration.
+ */
+import { Account, Word } from '@miden-sdk/miden-sdk';
+import { base64ToUint8Array } from './utils/encoding.js';
+import { wordElementToBigInt, wordToHex } from './utils/word.js';
+import { getProcedureRoot, getProcedureNames } from './procedures.js';
+// Storage slot names matching the MASM definitions
+const MULTISIG_SLOT_NAMES = {
+    THRESHOLD_CONFIG: 'openzeppelin::multisig::threshold_config',
+    SIGNER_PUBLIC_KEYS: 'openzeppelin::multisig::signer_public_keys',
+    EXECUTED_TRANSACTIONS: 'openzeppelin::multisig::executed_transactions',
+    PROCEDURE_THRESHOLDS: 'openzeppelin::multisig::procedure_thresholds',
+};
+const GUARDIAN_SLOT_NAMES = {
+    SELECTOR: 'openzeppelin::guardian::selector',
+    PUBLIC_KEY: 'openzeppelin::guardian::public_key',
+};
+/**
+ * Inspects an account to detect its multisig configuration.
+ *
+ * @example
+ * ```typescript
+ * // From base64-encoded state
+ * const config = AccountInspector.fromBase64(stateDataBase64);
+ * console.log(`${config.threshold}-of-${config.numSigners} multisig`);
+ *
+ * // From Miden SDK Account
+ * const config = AccountInspector.fromAccount(account);
+ * ```
+ */
+export class AccountInspector {
+    constructor() { }
+    /**
+     * Inspect a base64-encoded serialized account.
+     *
+     * @param base64Data - Base64-encoded Account bytes
+     * @returns Detected multisig configuration
+     */
+    static fromBase64(base64Data) {
+        const bytes = base64ToUint8Array(base64Data);
+        const account = Account.deserialize(bytes);
+        return AccountInspector.fromAccount(account);
+    }
+    /**
+     * Inspect a Miden SDK Account object.
+     *
+     * @param account - The Account object from Miden SDK
+     * @returns Detected multisig configuration
+     */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    static fromAccount(account) {
+        const storage = account.storage();
+        const slot0 = storage.getItem(MULTISIG_SLOT_NAMES.THRESHOLD_CONFIG);
+        const threshold = Number(wordElementToBigInt(slot0, 0));
+        const numSigners = Number(wordElementToBigInt(slot0, 1));
+        const signerCommitments = [];
+        for (let i = 0; i < numSigners; i++) {
+            try {
+                const key = new Word(new BigUint64Array([BigInt(i), 0n, 0n, 0n]));
+                const commitment = storage.getMapItem(MULTISIG_SLOT_NAMES.SIGNER_PUBLIC_KEYS, key);
+                if (commitment) {
+                    signerCommitments.push(wordToHex(commitment));
+                }
+            }
+            catch (error) {
+                console.warn(error);
+            }
+        }
+        let guardianEnabled = false;
+        let guardianCommitment = null;
+        try {
+            const guardianSlot0 = storage.getItem(GUARDIAN_SLOT_NAMES.SELECTOR);
+            const selector = Number(wordElementToBigInt(guardianSlot0, 0));
+            guardianEnabled = selector === 1;
+            if (guardianEnabled) {
+                const zeroKey = new Word(new BigUint64Array([0n, 0n, 0n, 0n]));
+                const guardianKey = storage.getMapItem(GUARDIAN_SLOT_NAMES.PUBLIC_KEY, zeroKey);
+                if (guardianKey) {
+                    guardianCommitment = wordToHex(guardianKey);
+                }
+            }
+        }
+        catch (error) {
+            console.warn(error);
+        }
+        const vaultBalances = [];
+        try {
+            const vault = account.vault();
+            const fungibleAssets = vault.fungibleAssets();
+            for (const asset of fungibleAssets) {
+                vaultBalances.push({
+                    faucetId: asset.faucetId().toString(),
+                    amount: BigInt(asset.amount()),
+                });
+            }
+        }
+        catch (error) {
+            console.warn(error);
+        }
+        // Read procedure threshold overrides from storage slot 3
+        // Storage layout: slot 3 is a map of PROC_ROOT => [threshold, 0, 0, 0]
+        const procedureThresholds = new Map();
+        for (const procName of getProcedureNames()) {
+            try {
+                const rootHex = getProcedureRoot(procName);
+                const rootWord = Word.fromHex(rootHex);
+                const value = storage.getMapItem(MULTISIG_SLOT_NAMES.PROCEDURE_THRESHOLDS, rootWord);
+                if (value) {
+                    const procThreshold = Number(wordElementToBigInt(value, 0));
+                    if (procThreshold > 0) {
+                        procedureThresholds.set(procName, procThreshold);
+                    }
+                }
+            }
+            catch {
+                // Procedure threshold not set - use default
+            }
+        }
+        return {
+            threshold,
+            numSigners,
+            signerCommitments,
+            guardianEnabled,
+            guardianCommitment,
+            vaultBalances,
+            procedureThresholds,
+        };
+    }
+}
+//# sourceMappingURL=inspector.js.map

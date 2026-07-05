@@ -240,17 +240,25 @@
   const w=new BartokWallet();
   window.w=w; // console access
   let walletReady=(async()=>{
-    try{
-      const cfg=await fetch(api('/api/config')).then(r=>r.json());
-      state.faucet=cfg.faucet;
-      USD_PER_BARTOK=cfg.usdPerBartok; ANON_CAP=cfg.anonSpendCap;
-      HOLDS={basic:cfg.tiers.basic.hold, genius:cfg.tiers.genius.hold};
-      const id=await w.init();
-      $('balWrap').title=id;
-      await refreshAccount();
-      await refreshBalance();
-    }catch(e){ $('bal').textContent='wallet error'; console.error(e); }
+    const cfg=await fetch(api('/api/config')).then(r=>r.json()).catch(()=>null);
+    if(cfg){ state.faucet=cfg.faucet; USD_PER_BARTOK=cfg.usdPerBartok; ANON_CAP=cfg.anonSpendCap;
+      HOLDS={basic:cfg.tiers.basic.hold, genius:cfg.tiers.genius.hold}; }
+    // First load races WASM init / testnet sync; retry a few times before giving up.
+    for(let attempt=1;attempt<=3;attempt++){
+      try{
+        const id=await w.init();
+        $('balWrap').title=id;
+        await refreshAccount();
+        await refreshBalance();
+        return;
+      }catch(e){
+        console.error('wallet init attempt '+attempt+' failed',e);
+        if(attempt<3){ $('bal').textContent='setting up…'; await new Promise(r=>setTimeout(r,3000)); }
+        else $('bal').textContent='tap to retry';
+      }
+    }
   })();
+  $('balWrap').onclick=()=>{ if($('bal').textContent==='tap to retry') location.reload(); };
   async function refreshAccount(){
     try{ state.account=await fetch(api('/api/account?buyerId=')+w.id()).then(r=>r.json()); }
     catch(_){ state.account={hasAccount:false, spent:0, redeemed:false}; }

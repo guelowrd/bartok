@@ -9,8 +9,8 @@
   },
   "dependencies": {
     "@miden-sdk/miden-sdk": "0.15.3",
-    "@openzeppelin/miden-multisig-client": "file:../../bartok-guardian/packages/miden-multisig-client",
-    "@openzeppelin/guardian-client": "file:../../bartok-guardian/packages/guardian-client"
+    "@openzeppelin/miden-multisig-client": "file:./vendor/miden-multisig-client",
+    "@openzeppelin/guardian-client": "file:./vendor/guardian-client"
   },
   "devDependencies": {
     "@miden-sdk/vite-plugin": "0.15.3",

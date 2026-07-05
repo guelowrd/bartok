@@ -1,0 +1,199 @@
+function extractDeltaPayload(payload) {
+    const txSummary = 'tx_summary' in payload ? payload.tx_summary : { data: payload.data };
+    const signatures = 'signatures' in payload && Array.isArray(payload.signatures) ? payload.signatures : [];
+    const metadata = 'metadata' in payload ? payload.metadata : undefined;
+    return { txSummary, signatures, metadata };
+}
+export function fromServerSignature(signature) {
+    if (signature.scheme === 'ecdsa') {
+        return {
+            scheme: 'ecdsa',
+            signature: signature.signature,
+            publicKey: signature.public_key,
+        };
+    }
+    return signature;
+}
+export function fromServerCosignerSignature(server) {
+    return {
+        signerId: server.signer_id,
+        signature: fromServerSignature(server.signature),
+        timestamp: server.timestamp,
+    };
+}
+export function fromServerDeltaStatus(server) {
+    switch (server.status) {
+        case 'pending':
+            return {
+                status: 'pending',
+                timestamp: server.timestamp,
+                proposerId: server.proposer_id,
+                cosignerSigs: server.cosigner_sigs.map(fromServerCosignerSignature),
+            };
+        case 'candidate':
+            return { status: 'candidate', timestamp: server.timestamp };
+        case 'canonical':
+            return { status: 'canonical', timestamp: server.timestamp };
+        case 'discarded':
+            return { status: 'discarded', timestamp: server.timestamp };
+    }
+}
+export function fromServerProposalMetadata(server) {
+    return {
+        proposalType: server.proposal_type,
+        targetThreshold: server.target_threshold,
+        requiredSignatures: server.required_signatures,
+        signerCommitments: server.signer_commitments,
+        targetProcedure: server.target_procedure,
+        salt: server.salt,
+        description: server.description,
+        newGuardianPubkey: server.new_guardian_pubkey,
+        newGuardianEndpoint: server.new_guardian_endpoint,
+        noteIds: server.note_ids,
+        consumeNotesMetadataVersion: server.consume_notes_metadata_version,
+        consumeNotesNotes: server.consume_notes_notes,
+        recipientId: server.recipient_id,
+        faucetId: server.faucet_id,
+        amount: server.amount,
+    };
+}
+export function fromServerDeltaObject(server) {
+    const { txSummary, signatures, metadata } = extractDeltaPayload(server.delta_payload);
+    return {
+        accountId: server.account_id,
+        nonce: server.nonce,
+        prevCommitment: server.prev_commitment,
+        newCommitment: server.new_commitment,
+        deltaPayload: {
+            txSummary,
+            signatures: signatures.map((s) => ({
+                signerId: s.signer_id,
+                signature: fromServerSignature(s.signature),
+            })),
+            metadata: metadata ? fromServerProposalMetadata(metadata) : undefined,
+        },
+        ackSig: server.ack_sig,
+        ackPubkey: server.ack_pubkey,
+        ackScheme: server.ack_scheme,
+        status: fromServerDeltaStatus(server.status),
+    };
+}
+export function fromServerStateObject(server) {
+    return {
+        accountId: server.account_id,
+        commitment: server.commitment,
+        stateJson: server.state_json,
+        createdAt: server.created_at,
+        updatedAt: server.updated_at,
+        authScheme: server.auth_scheme,
+    };
+}
+export function fromServerConfigureResponse(server) {
+    return {
+        success: server.success,
+        message: server.message,
+        ackPubkey: server.ack_pubkey,
+        ackCommitment: server.ack_commitment,
+    };
+}
+export function fromServerLookupResponse(server) {
+    if (!server || !Array.isArray(server.accounts)) {
+        throw new Error('Malformed /state/lookup response: expected { accounts: [...] }');
+    }
+    return {
+        accounts: server.accounts.map((entry) => ({ accountId: entry.account_id })),
+    };
+}
+export function toServerSignature(sig) {
+    if (sig.scheme === 'ecdsa') {
+        return {
+            scheme: 'ecdsa',
+            signature: sig.signature,
+            public_key: sig.publicKey,
+        };
+    }
+    return sig;
+}
+export function toServerCosignerSignature(sig) {
+    return {
+        signer_id: sig.signerId,
+        signature: toServerSignature(sig.signature),
+        timestamp: sig.timestamp,
+    };
+}
+export function toServerDeltaStatus(status) {
+    switch (status.status) {
+        case 'pending':
+            return {
+                status: 'pending',
+                timestamp: status.timestamp,
+                proposer_id: status.proposerId,
+                cosigner_sigs: status.cosignerSigs.map(toServerCosignerSignature),
+            };
+        case 'candidate':
+            return { status: 'candidate', timestamp: status.timestamp };
+        case 'canonical':
+            return { status: 'canonical', timestamp: status.timestamp };
+        case 'discarded':
+            return { status: 'discarded', timestamp: status.timestamp };
+    }
+}
+export function toServerProposalMetadata(meta) {
+    return {
+        proposal_type: meta.proposalType,
+        target_threshold: meta.targetThreshold,
+        required_signatures: meta.requiredSignatures,
+        signer_commitments: meta.signerCommitments,
+        target_procedure: meta.targetProcedure,
+        salt: meta.salt,
+        description: meta.description,
+        new_guardian_pubkey: meta.newGuardianPubkey,
+        new_guardian_endpoint: meta.newGuardianEndpoint,
+        note_ids: meta.noteIds,
+        consume_notes_metadata_version: meta.consumeNotesMetadataVersion,
+        consume_notes_notes: meta.consumeNotesNotes,
+        recipient_id: meta.recipientId,
+        faucet_id: meta.faucetId,
+        amount: meta.amount,
+    };
+}
+export function toServerConfigureRequest(req) {
+    return {
+        account_id: req.accountId,
+        auth: req.auth,
+        initial_state: { data: req.initialState.data, account_id: req.initialState.accountId },
+    };
+}
+export function toServerDeltaProposalRequest(req) {
+    return {
+        account_id: req.accountId,
+        nonce: req.nonce,
+        delta_payload: {
+            tx_summary: req.deltaPayload.txSummary,
+            signatures: req.deltaPayload.signatures.map((s) => ({
+                signer_id: s.signerId,
+                signature: toServerSignature(s.signature),
+            })),
+            metadata: req.deltaPayload.metadata ? toServerProposalMetadata(req.deltaPayload.metadata) : undefined,
+        },
+    };
+}
+export function toServerSignProposalRequest(req) {
+    return {
+        account_id: req.accountId,
+        commitment: req.commitment,
+        signature: toServerSignature(req.signature),
+    };
+}
+export function toServerExecutionDelta(delta) {
+    return {
+        account_id: delta.accountId,
+        nonce: delta.nonce,
+        prev_commitment: delta.prevCommitment,
+        new_commitment: delta.newCommitment,
+        delta_payload: delta.deltaPayload,
+        ack_sig: delta.ackSig,
+        status: toServerDeltaStatus(delta.status),
+    };
+}
+//# sourceMappingURL=conversion.js.map

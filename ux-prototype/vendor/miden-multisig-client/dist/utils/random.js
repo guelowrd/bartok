@@ -1,0 +1,14 @@
+import { Word } from '@miden-sdk/miden-sdk';
+export function randomWord() {
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const view = new DataView(bytes.buffer);
+    const u64s = new BigUint64Array([
+        view.getBigUint64(0, true),
+        view.getBigUint64(8, true),
+        view.getBigUint64(16, true),
+        view.getBigUint64(24, true),
+    ]);
+    return new Word(u64s);
+}
+//# sourceMappingURL=random.js.map

@@ -1,5 +1,6 @@
-// Creates a fresh BART faucet with the protocol-max supply (2^63 - 2^31,
-// effectively unlimited) and merges its id into ../accounts.json — everything
+// Creates a fresh BART faucet — decimals = 2 (the CLEAN peg: 1 base unit =
+// 1 Basic LLM token; Ŧ1.00 displayed = 100 base units, declared on-chain) —
+// with protocol-max supply, and merges its id into ../accounts.json. Everything
 // else (multisigs, tags, guardian endpoints) untouched. Existing wallets keep
 // their old-faucet tokens, which simply stop counting; testers redeem again.
 //
@@ -16,7 +17,7 @@ async fn main() -> Result<()> {
     client.sync_state().await.context("initial sync failed")?;
 
     let faucet =
-        create_basic_faucet_account(&mut client, keystore, "BART", 0, MAX_SUPPLY).await?;
+        create_basic_faucet_account(&mut client, keystore, "BART", 2, MAX_SUPPLY).await?;
     println!("new BART faucet: {} (max supply {})", faucet.id().to_hex(), MAX_SUPPLY);
     println!("Explorer: https://testnet.midenscan.com/account/{}", faucet.id().to_hex());
 

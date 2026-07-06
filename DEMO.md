@@ -86,10 +86,12 @@ testers queue under load; fine for the first cohort.
 
 ## Economics (all in `ux-prototype/server.js` CONFIG)
 
-REBASED 100:1 (2026-07-06): Ŧ1 = 100 Basic tokens ≈ a short sentence of output.
-Still anchored to real cost ($0.10/M tokens → Ŧ1 = $0.00001). The oracle attests
-charge = round(tokens × price / 100), min Ŧ1 (PRICE_DENOM). Genius = 7× Basic.
-Codes ILOVEBARTOK + _00.._99 = Ŧ100,000 ($1) each, once per wallet, in order.
-Anon spend cap Ŧ50,000. Holds: Basic Ŧ500, Genius Ŧ2,000 (min of cap and
-balance). Faucet supply: protocol max (~9.2e18). NOTE: pre-rebase test wallets
-hold old-unit balances that now read 100× rich — testnet, accepted.
+CLEAN PEG (faucet decimals = 2, on-chain): 1 BASE unit = 1 Basic LLM token;
+Ŧ1.00 displayed = 100 base units — the token itself carries the denomination.
+The oracle attests charge = tokens × price in base units (pure integers, no
+rounding); a 28-token reply is exactly Ŧ0.28. Genius = 7× Basic. Anchored to
+real cost: $0.10/M tokens → $0.0000001/base unit. Codes ILOVEBARTOK + _00.._99
+each mint Ŧ100,000.00 ($1), once per wallet, in ladder order. Anon spend cap
+Ŧ50,000. Holds: Basic Ŧ500 / Genius Ŧ2,000 (min of cap and balance). Faucet
+supply: protocol max. Earlier test faucets' balances simply stopped counting
+(testnet; no users had real holdings).

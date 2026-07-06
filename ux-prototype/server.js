@@ -30,12 +30,12 @@ const ACCOUNTS = JSON.parse(fs.readFileSync(path.join(ROOT, 'miden', 'accounts.j
 // The Bartok (Ŧ) is a stablecoin pegged to the cheapest LLM token: 1 Basic-model
 // token ALWAYS costs 1 Ŧ (the peg anchor). Other tiers are basic-token multiples.
 const CONFIG = {
-  // REBASED 2026-07-06 (100:1): 1 Ŧ = 100 LLM tokens ≈ a short sentence of
-  // Basic output. Still anchored to real cheap-token cost ($0.10/M tokens →
-  // Ŧ1 = $0.00001). Faucet supply is protocol max — grants effectively unlimited.
-  usdPerBartok: 0.00001,       // display rate on the buy-credits page only
-  anonSpendCapBartok: 50000,   // spend allowed before an account is required (=$0.50)
-  freeGrantBartok: 100000,     // per ILOVEBARTOK* code (=$1) ≈ thousands of replies
+  // CLEAN PEG (faucet decimals = 2, on-chain): 1 BASE unit = 1 Basic LLM token;
+  // Ŧ1.00 displayed = 100 base units. All CONFIG values are BASE units.
+  // Anchored to real cost: $0.10/M tokens → $0.0000001 per base unit.
+  usdPerBartok: 0.0000001,     // per BASE unit (display rate on the buy page)
+  anonSpendCapBartok: 5000000, // Ŧ50,000 displayed (=$0.50)
+  freeGrantBartok: 10000000,   // per ILOVEBARTOK* code: Ŧ100,000 displayed (=$1)
   discountCode: 'ILOVEBARTOK',
   // Reply budget covers REASONING + the visible answer. Reasoning models can
   // burn 500-1,500 tokens thinking before they write — a tight cap makes them
@@ -47,26 +47,24 @@ const CONFIG = {
   // (enough for at least ~1 reply). Small by design — not a $250 pre-auth.
   // Measured (2026-07-06): basic reply Ŧ925 first message, Ŧ1,042 with history
   // riding along — call it ~Ŧ1,000-1,600/message. Holds sized for a real session.
-  holdBartok: { basic: 500, genius: 2000 },   // ~30-50 / ~25-35 messages
-  minHoldBartok: { basic: 25, genius: 100 },  // > one worst-case reply
+  holdBartok: { basic: 50000, genius: 200000 },   // Ŧ500 / Ŧ2,000 displayed
+  minHoldBartok: { basic: 2500, genius: 10000 },  // > one worst-case reply
 };
 
 // João's two real tiers: distinct free OpenRouter models, distinct per-token
 // prices (in Bartoks). basic.pricePerToken = 1 is the PEG ANCHOR — do not change
 // without redefining the Bartok. The 429 fallback stays WITHIN a tier so the
 // verified model always matches what the buyer paid for.
-const PRICE_DENOM = 100; // tokens per Ŧ at price 1 — the rebased peg unit
-
 const TIERS = {
   basic: {
     models: ['nvidia/nemotron-nano-9b-v2:free', 'openai/gpt-oss-20b:free'],
-    pricePerToken: 1,          // numerator; with priceDenom: Ŧ1 per 100 basic tokens (the peg)
+    pricePerToken: 1,          // PEG: 1 base unit per Basic token (decimals live on-chain)
     requiresAccount: false,
   },
   genius: {
     models: ['meta-llama/llama-3.3-70b-instruct:free', 'qwen/qwen3-next-80b-a3b-instruct:free',
       'openai/gpt-oss-120b:free', 'nvidia/nemotron-3-super-120b-a12b:free'],
-    pricePerToken: 7,          // 7x the Basic rate (per 100 tokens)
+    pricePerToken: 7,          // 7x the Basic rate
     requiresAccount: true,     // anonymous users are Basic-only
   },
 };
@@ -173,7 +171,7 @@ async function runAnswer(prompt, tier, history, onStage) {
   onStage('verify');
   await run('cargo', ['run', '--release', '--example', 'openrouter_present'], TLSN, env);
   const oracleRun = await run('cargo', ['run', '--release', '--example', 'openrouter_oracle'],
-    TLSN, { ...env, PRICE_PER_TOKEN: String(tierCfg.pricePerToken), PRICE_DENOM: String(PRICE_DENOM) });
+    TLSN, { ...env, PRICE_PER_TOKEN: String(tierCfg.pricePerToken) });
   const oracle = lastJson(oracleRun.out);
   if (oracleRun.code !== 0 || !oracle || !oracle.notary_ok) {
     const reason = /REJECTED/.test(oracleRun.out) ? 'oracle rejected: unknown notary'

@@ -101,7 +101,7 @@
   <a class="brand" href="index.html">BAR<span class="hl">Ŧ</span>OK</a>
   <div class="hdr-right">
     <a class="earn-link" href="http://localhost:8787/seller.html" title="Rent out your spare AI and earn">Earn ⚡</a>
-    <button class="fundbtn" id="fundBtn">Add credits</button>
+    <button class="fundbtn" id="fundBtn">Add BarŦoks</button>
     <span class="balance" id="balWrap" title="">BALANCE <b id="bal"><span class="radar-mini"></span></b></span>
   </div>
 </header>
@@ -114,8 +114,8 @@
     <div class="classes" id="classes" aria-busy="true">
       <div class="loadbox"><div class="radar radar--load"></div><div>getting ready…</div></div>
     </div>
-    <button class="btn btn--block" id="findBtn" disabled>Find a Bartoker</button>
-    <p class="sub" id="findNote" style="font-size:12px;margin-top:12px;">We set aside a small hold of credits when you start a chat, like a ride hold. Whatever you don't use comes right back when you finish.</p>
+    <button class="btn btn--block" id="findBtn" disabled>Find a BarŦoker</button>
+    <p class="sub" id="findNote" style="font-size:12px;margin-top:12px;">We set aside a small hold of BarŦoks when you start a chat, like a ride hold. Whatever you don't use comes right back when you finish.</p>
   </div>
 </div>
 
@@ -123,8 +123,8 @@
 <div class="scroll hidden" id="s-matching">
   <div class="inner matching">
     <div class="radar"></div>
-    <h1 style="margin-top:6px;" id="matchTitle">Finding<br>your Bartoker…</h1>
-    <p class="sub" id="matchSub">Comparing verified Bartokers by price and rating.</p>
+    <h1 style="margin-top:6px;" id="matchTitle">Finding<br>your BarŦoker…</h1>
+    <p class="sub" id="matchSub">Comparing verified BarŦokers by price and rating.</p>
   </div>
 </div>
 
@@ -161,7 +161,7 @@
 <!-- RATE -->
 <div class="scroll hidden" id="s-rate">
   <div class="inner">
-    <h1 style="text-align:center;">Rate your<br>Bartoker</h1>
+    <h1 style="text-align:center;">Rate your<br>BarŦoker</h1>
     <div class="driver" style="margin:16px 0;">
       <div class="avatar" id="rAvatar">🇵🇹</div>
       <div><div class="dn" id="rName">João</div><div class="meta" id="rTripMeta"></div></div>
@@ -169,7 +169,7 @@
     <div class="ratestars" id="stars"><span data-s="1">★</span><span data-s="2">★</span><span data-s="3">★</span><span data-s="4">★</span><span data-s="5">★</span></div>
     <div class="ratehint" id="rateHint">Tap to rate<sup class="fn">*</sup></div>
     <div class="tags" id="tags"></div>
-    <button class="btn btn--block" id="submitRate">Finish &amp; get your credits back</button>
+    <button class="btn btn--block" id="submitRate">Finish &amp; get your BarŦoks back</button>
     <button class="btn btn--ghost btn--block" id="skipRate" style="margin-top:10px;">Skip rating &amp; settle</button>
     <p class="footnotes">* ratings are cosmetic for now</p>
   </div>
@@ -205,7 +205,7 @@
 <!-- BUY CREDITS -->
 <div id="buyModal" class="proof-overlay hidden">
   <div class="proof-card" style="max-width:420px;text-align:left;">
-    <div class="proof-h" style="text-align:center;">Add credits</div>
+    <div class="proof-h" style="text-align:center;">Add BarŦoks</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:12px;text-align:center;">Ŧ10,000,000 = $1. Pay with a card, or use a code.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
       <input placeholder="Card number" disabled style="grid-column:1/3;box-sizing:border-box;width:100%;min-width:0;padding:9px;border:2.5px solid var(--ink);border-radius:8px;background:#f4f4f4;">
@@ -357,11 +357,11 @@
           wrong_order:'Codes unlock in order — your next one is '+(r.next||'ILOVEBARTOK_00')+'.'}[r.error]||r.error;
         $('buyMsg').textContent=msg; $('redeemBtn').disabled=false; return;
       }
-      buyBusy('Adding your credits (can take a minute or two)…');
+      buyBusy('Adding your BarŦoks (can take a minute or two)…');
       const n=await w.waitAndAbsorb();
       await refreshAccount(); await refreshBalance();
       if(n>0){ $('buyMsg').textContent='Added '+units(r.amount)+' ✓'; setTimeout(closeBuy, 1200); }
-      else { $('buyMsg').textContent='Your credits are on their way — they\'ll appear in your balance shortly.'; w.waitAndAbsorb(600000).then(()=>refreshBalance()); setTimeout(closeBuy, 2500); }
+      else { $('buyMsg').textContent='Your BarŦoks are on their way — they\'ll appear in your balance shortly.'; w.waitAndAbsorb(600000).then(()=>refreshBalance()); setTimeout(closeBuy, 2500); }
     }catch(e){ $('buyMsg').textContent='Something went wrong: '+e.message; }
     $('redeemBtn').disabled=false;
   };
@@ -403,7 +403,7 @@
   $('findBtn').onclick=async()=>{
     await walletReady;
     show('matching');
-    $('matchTitle').innerHTML='Finding<br>your Bartoker…';
+    $('matchTitle').innerHTML='Finding<br>your BarŦoker…';
     $('matchSub').textContent='Matching you with João…';
     try{
       const bal0=await refreshBalance();
@@ -414,7 +414,7 @@
       state.sessionId=s.sessionId; state.faucet=s.escrowTemplate.faucet;
       state.budget=s.escrowTemplate.budget; state.remaining=state.budget;
 
-      $('matchTitle').innerHTML='Setting aside<br>your Bartoks…';
+      $('matchTitle').innerHTML='Setting aside<br>your BarŦoks…';
       $('matchSub').textContent='Holding '+units(state.budget)+' for this chat. The rest comes back when you finish. (Securing it takes ~1-2 min.)';
       const {noteB64}=await w.fundEscrow(s.escrowTemplate);
       await fetch(api('/api/session/escrow'),{method:'POST',body:JSON.stringify({sessionId:state.sessionId,noteB64})});
@@ -433,7 +433,7 @@
     $('dbAvatar').textContent=JOAO.emoji; $('dbName').textContent=JOAO.name;
     $('dbBudget').textContent='budget '+units(state.remaining);
     $('thread').innerHTML='';
-    addRow('ai-sys','Connected to '+JOAO.name+' '+JOAO.emoji+'. I remember our conversation. Every reply shows its price and is proven genuine. Hold set aside: '+units(state.budget)+'.');
+    addRow('ai-sys','Your BarŦoker '+JOAO.name+' '+JOAO.emoji+' is in. He remembers your conversation, every reply shows its price, and each answer is proven genuine. Hold set aside: '+units(state.budget)+'.');
     updateHint(); refreshSend(); show('chat'); $('input').focus();
   }
   $('seg').querySelectorAll('button').forEach(b=>b.onclick=()=>{ if(b.dataset.tier==='genius' && (!state.account||!state.account.hasAccount)){ openAuth('Create a free account to unlock the Genius brain.'); return; } $('seg').querySelectorAll('button').forEach(x=>x.classList.remove('sel'));b.classList.add('sel');state.tier=b.dataset.tier;updateHint();});
@@ -518,7 +518,7 @@
       const m=e.message;
       let msg='Sorry, something went wrong: '+m;
       if(m==='BUSY') msg='João’s free lanes are busy right now — give it a few seconds and try again.';
-      else if(m==='hold_exhausted') msg='This chat’s hold is used up. Finish here to get your unused credits back, then start a fresh chat.';
+      else if(m==='hold_exhausted') msg='This chat’s hold is used up. Finish here to get your unused BarŦoks back, then start a fresh chat.';
       else if(m==='anon_cap'){ msg='You’ve used your free trial. Create an account to keep going.'; openAuth('Create a free account to keep chatting.'); }
       else if(m==='account_required'){ msg='The Genius brain needs an account.'; openAuth('Create a free account to unlock the Genius brain.'); }
       ai.querySelector('.bubble').textContent=msg;
@@ -571,7 +571,7 @@
       if(data.error) throw new Error(data.error);
       const ratedLine = state.rating? ('★'.repeat(state.rating)+(state.tags.length?(' · '+state.tags.join(', ')):'')) : 'not rated';
       $('receiptBody').innerHTML=
-        `<div class="rline"><span>Bartoker</span><span>${JOAO.emoji} ${JOAO.name}</span></div>
+        `<div class="rline"><span>BarŦoker</span><span>${JOAO.emoji} ${JOAO.name}</span></div>
          <div class="rline"><span>Replies</span><span>${state.replies}</span></div>
          <div class="rline"><span>You used</span><span>${units(data.charge)}</span></div>
          <div class="rline"><span>Back to you</span><span>${units(data.refund)}</span></div>
@@ -591,7 +591,7 @@
       })();
     }catch(e){
       $('receiptBody').innerHTML='<div class="rline"><span>Settlement failed</span><span>'+e.message+'</span></div>'
-        +'<div class="rline" style="color:var(--muted)">Your credits are safe and can be recovered.</div>';
+        +'<div class="rline" style="color:var(--muted)">Your BarŦoks are safe and can be recovered.</div>';
     }
     state.settling=false;
   }

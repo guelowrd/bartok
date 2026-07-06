@@ -86,8 +86,10 @@ testers queue under load; fine for the first cohort.
 
 ## Economics (all in `ux-prototype/server.js` CONFIG)
 
-Ŧ is pegged to the cheapest token: 1 Basic token = 1 Ŧ (anchor). Display rate
-Ŧ1 = $0.0000001 ($0.10/M tokens — squarely in the real cheap-token range).
-Genius = 7 Ŧ/token (account required). Codes ILOVEBARTOK + _00.._99 = Ŧ10,000,000
-($1) each, once per wallet. Anon spend cap Ŧ5,000,000. Holds: Basic Ŧ10,000,
-Genius Ŧ50,000 (min of cap and balance). Faucet supply: protocol max (~9.2e18).
+REBASED 100:1 (2026-07-06): Ŧ1 = 100 Basic tokens ≈ a short sentence of output.
+Still anchored to real cost ($0.10/M tokens → Ŧ1 = $0.00001). The oracle attests
+charge = round(tokens × price / 100), min Ŧ1 (PRICE_DENOM). Genius = 7× Basic.
+Codes ILOVEBARTOK + _00.._99 = Ŧ100,000 ($1) each, once per wallet, in order.
+Anon spend cap Ŧ50,000. Holds: Basic Ŧ500, Genius Ŧ2,000 (min of cap and
+balance). Faucet supply: protocol max (~9.2e18). NOTE: pre-rebase test wallets
+hold old-unit balances that now read 100× rich — testnet, accepted.

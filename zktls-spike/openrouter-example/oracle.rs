@@ -1,6 +1,8 @@
 // BARTOK oracle (zkTLS -> charge): verifies the TLSNotary presentation against
 // the known notary key, extracts the disclosed token usage and model, and
-// computes the settlement charge (charge = total_tokens * PRICE_PER_TOKEN).
+// computes the settlement charge:
+//   charge = round(total_tokens * PRICE_PER_TOKEN / PRICE_DENOM), min 1 if tokens > 0.
+// PRICE_DENOM (default 1) allows sub-unit per-token prices (e.g. 1/100 Ŧ per token).
 //
 // The last stdout line is machine-readable JSON:
 //   {"total_tokens":N,"charge":N,"model":"...","notary_ok":true}
@@ -67,6 +69,11 @@ struct Usage {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let price_denom: u64 = std::env::var("PRICE_DENOM")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .filter(|v| *v > 0)
+        .unwrap_or(1);
     let price_per_token: u64 = std::env::var("PRICE_PER_TOKEN")
         .map_err(|_| "PRICE_PER_TOKEN env var is required (units per token)")?
         .parse()
@@ -118,11 +125,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let usage: Usage = serde_json::from_str(usage_fragment)
         .map_err(|e| format!("disclosed usage is not valid JSON ({e}): {usage_fragment}"))?;
     let model = json_string(&recv, "model").ok_or("model not disclosed in the presentation")?;
-    let charge = usage.total_tokens * price_per_token;
+    // Rounded to the nearest whole Ŧ; any real usage costs at least Ŧ1.
+    let charge = {
+        let c = (usage.total_tokens * price_per_token + price_denom / 2) / price_denom;
+        if usage.total_tokens > 0 && c == 0 { 1 } else { c }
+    };
 
     eprintln!("ORACLE: verified zkTLS session with {server} at {time} (notary ok)");
     eprintln!(
-        "ORACLE: model={model} total_tokens={}  ->  charge={charge} (price {price_per_token}/token)",
+        "ORACLE: model={model} total_tokens={}  ->  charge={charge} (price {price_per_token}/{price_denom} per token)",
         usage.total_tokens
     );
     // Machine-readable line for the bridge (last line of stdout):

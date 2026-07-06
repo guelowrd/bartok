@@ -114,7 +114,7 @@
     <div class="classes" id="classes" aria-busy="true">
       <div class="loadbox"><div class="radar radar--load"></div><div>getting ready…</div></div>
     </div>
-    <button class="btn btn--block" id="findBtn" disabled>Find a helper</button>
+    <button class="btn btn--block" id="findBtn" disabled>Find a Bartoker</button>
     <p class="sub" id="findNote" style="font-size:12px;margin-top:12px;">We set aside a small hold of credits when you start a chat, like a ride hold. Whatever you don't use comes right back when you finish.</p>
   </div>
 </div>
@@ -123,8 +123,8 @@
 <div class="scroll hidden" id="s-matching">
   <div class="inner matching">
     <div class="radar"></div>
-    <h1 style="margin-top:6px;" id="matchTitle">Finding<br>your helper…</h1>
-    <p class="sub" id="matchSub">Comparing verified helpers by price and rating.</p>
+    <h1 style="margin-top:6px;" id="matchTitle">Finding<br>your Bartoker…</h1>
+    <p class="sub" id="matchSub">Comparing verified Bartokers by price and rating.</p>
   </div>
 </div>
 
@@ -161,7 +161,7 @@
 <!-- RATE -->
 <div class="scroll hidden" id="s-rate">
   <div class="inner">
-    <h1 style="text-align:center;">Rate your<br>helper</h1>
+    <h1 style="text-align:center;">Rate your<br>Bartoker</h1>
     <div class="driver" style="margin:16px 0;">
       <div class="avatar" id="rAvatar">🇵🇹</div>
       <div><div class="dn" id="rName">João</div><div class="meta" id="rTripMeta"></div></div>
@@ -178,7 +178,7 @@
 <!-- RECEIPT -->
 <div class="scroll hidden" id="s-receipt">
   <div class="inner">
-    <h1>Trip<br>summary</h1>
+    <h1>Barter<br>summary</h1>
     <div class="card rcard" id="receiptBody"></div>
     <button class="btn btn--block" id="newChat">New chat</button>
   </div>
@@ -403,7 +403,7 @@
   $('findBtn').onclick=async()=>{
     await walletReady;
     show('matching');
-    $('matchTitle').innerHTML='Finding<br>your helper…';
+    $('matchTitle').innerHTML='Finding<br>your Bartoker…';
     $('matchSub').textContent='Matching you with João…';
     try{
       const bal0=await refreshBalance();
@@ -571,7 +571,7 @@
       if(data.error) throw new Error(data.error);
       const ratedLine = state.rating? ('★'.repeat(state.rating)+(state.tags.length?(' · '+state.tags.join(', ')):'')) : 'not rated';
       $('receiptBody').innerHTML=
-        `<div class="rline"><span>Helper</span><span>${JOAO.emoji} ${JOAO.name}</span></div>
+        `<div class="rline"><span>Bartoker</span><span>${JOAO.emoji} ${JOAO.name}</span></div>
          <div class="rline"><span>Replies</span><span>${state.replies}</span></div>
          <div class="rline"><span>You used</span><span>${units(data.charge)}</span></div>
          <div class="rline"><span>Back to you</span><span>${units(data.refund)}</span></div>

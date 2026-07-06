@@ -23,7 +23,16 @@ Accounts (this run): Rita `0x7495ed…`, operator `0x3edc50…`, João `0xad383b
   buy-credits modal + ILOVEBARTOK (Ŧ1000 private mint); auth-lite (scrypt, users.json) with
   Genius-needs-account + Ŧ500 anon spend cap; tier-based dynamic holds (Basic Ŧ3000/Genius Ŧ10000, balance-capped).
 - [x] **P5 docs**: DEMO.md rewritten for the Rita/Guardian flow; stitch.sh marked cycle-1.
-- [~] **P6 ship**: deploy glue DONE (bridge CORS + /guardian reverse-proxy so one tunnel
+- [x] **P6 SHIPPED 2026-07-06**: LIVE at https://bartok-ten.vercel.app (backend = Mac +
+  ngrok static domain quote-escargot-headache.ngrok-free.dev; reboot runbook: ./serve.sh
+  + ./tunnel.sh, Vercel never touched). Deployed-stack outsider journey VERIFIED end to
+  end: fresh wallet → ILOVEBARTOK Ŧ1,000 → balance-clamped Ŧ1,000 hold → Guardian-countersigned
+  settle → refund landed, ledger exact. Deploy-day bugs fixed live: CORS lacked PUT
+  (signDeltaProposal — ALL browser signing silently dead), ngrok agent displaced by a
+  second manual session (free tier = 1 agent), grant < flat hold bricked fresh testers
+  (now min(cap, balance) with floors). Chat leg pending only OpenRouter free-lane
+  availability (code path proven locally).
+  Deploy glue:  (bridge CORS + /guardian reverse-proxy so one tunnel
   serves app API + Guardian; VITE_BARTOK_BACKEND config; vercel.json COOP/COEP; serve.sh +
   tunnel.sh). Vite prod build green. REMAINING (needs Gaylord): actual `vercel deploy` with
   his Pro account + running the cloudflared tunnel + a fresh-Rita acceptance run.

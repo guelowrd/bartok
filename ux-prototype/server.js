@@ -30,18 +30,18 @@ const ACCOUNTS = JSON.parse(fs.readFileSync(path.join(ROOT, 'miden', 'accounts.j
 // The Bartok (Ŧ) is a stablecoin pegged to the cheapest LLM token: 1 Basic-model
 // token ALWAYS costs 1 Ŧ (the peg anchor). Other tiers are basic-token multiples.
 const CONFIG = {
-  // Honest rate: cheap raw tokens go for ~$0.05-0.5 per MILLION; we price the
-  // verified rail at $10/M (Ŧ1 = $0.00001) — a marketplace premium, not fantasy.
-  // Faucet max supply is 100M Ŧ — grant sizes must respect it (100 codes/wallet).
-  usdPerBartok: 0.00001,       // display rate on the buy-credits page only
-  anonSpendCapBartok: 50000,   // spend allowed before an account is required (=$0.50)
-  freeGrantBartok: 100000,     // per ILOVEBARTOK* code (=$1) ≈ 100-300 replies
+  // Honest rate: cheap raw tokens go for ~$0.05-0.5 per MILLION; we open at
+  // $0.10/M (Ŧ1 = $0.0000001), squarely in the real range. Faucet supply is
+  // the protocol max (2^63-2^31 ≈ 9.2e18 Ŧ) — grants are effectively unlimited.
+  usdPerBartok: 0.0000001,     // display rate on the buy-credits page only
+  anonSpendCapBartok: 5000000, // spend allowed before an account is required (=$0.50)
+  freeGrantBartok: 10000000,   // per ILOVEBARTOK* code (=$1) ≈ thousands of replies
   discountCode: 'ILOVEBARTOK',
   geniusMaxTokens: 512,        // cap so a Genius reply can't blow the hold
   // Session hold per tier = min(cap, buyer's balance), with a per-tier floor
   // (enough for at least ~1 reply). Small by design — not a $250 pre-auth.
-  holdBartok: { basic: 3000, genius: 10000 },
-  minHoldBartok: { basic: 500, genius: 2500 },
+  holdBartok: { basic: 10000, genius: 50000 },
+  minHoldBartok: { basic: 1000, genius: 5000 },
 };
 
 // João's two real tiers: distinct free OpenRouter models, distinct per-token
@@ -232,7 +232,7 @@ function ndjsonHead(res) {
   return obj => res.write(JSON.stringify(obj) + '\n');
 }
 
-const usd = units => Number((units * CONFIG.usdPerBartok).toFixed(4));
+const usd = units => Number((units * CONFIG.usdPerBartok).toFixed(6));
 
 // ---- auth-lite: {walletId -> {name, salt, hash}} + per-wallet spend + redeemed
 // ponytail: a flat JSON file, not a DB. Good enough for the first Rita cohort.

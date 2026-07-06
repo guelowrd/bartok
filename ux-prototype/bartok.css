@@ -56,7 +56,7 @@ input,textarea,select{font-family:var(--f-ui);background:var(--panel);color:var(
 input:focus,textarea:focus,select:focus{outline:none;box-shadow:var(--sh-sm);}
 
 /* chat bubbles */
-.bubble{max-width:80%;padding:11px 14px;border:var(--bd);border-radius:16px;font-size:15px;white-space:pre-wrap;box-shadow:var(--sh-sm);}
+.bubble{max-width:80%;min-width:0;padding:11px 14px;border:var(--bd);border-radius:16px;font-size:15px;white-space:pre-wrap;box-shadow:var(--sh-sm);overflow-wrap:anywhere;}
 .bubble.user{background:var(--cobalt);color:#fff;border-bottom-right-radius:5px;}
 .bubble.ai{background:var(--panel);border-bottom-left-radius:5px;}
 

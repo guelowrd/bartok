@@ -35,9 +35,10 @@ const CONFIG = {
   freeGrantBartok: 1000,       // ILOVEBARTOK grant (=$10)
   discountCode: 'ILOVEBARTOK',
   geniusMaxTokens: 512,        // cap so a Genius reply can't blow the hold
-  // Session hold per tier, capped by the wallet's balance browser-side. Small
-  // by design (a low-income Rita, not a $250 pre-auth).
+  // Session hold per tier = min(cap, buyer's balance), with a per-tier floor
+  // (enough for at least ~1 reply). Small by design — not a $250 pre-auth.
   holdBartok: { basic: 3000, genius: 10000 },
+  minHoldBartok: { basic: 500, genius: 2500 },
 };
 
 // João's two real tiers: distinct free OpenRouter models, distinct per-token
@@ -295,13 +296,20 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && req.url === '/api/session/start') {
     if (!rateOk(req, 'start', 20, 60000)) return json(res, 429, { error: 'slow down' });
-    const { buyerId, tier = 'basic' } = JSON.parse(await readBody(req) || '{}');
+    const { buyerId, tier = 'basic', balance = 0 } = JSON.parse(await readBody(req) || '{}');
     if (!buyerId) return json(res, 400, { error: 'missing buyerId' });
     if (!TIERS[tier]) return json(res, 400, { error: 'unknown tier' });
     if (TIERS[tier].requiresAccount && !hasAccount(buyerId)) {
       return json(res, 403, { error: 'account_required', tier });
     }
-    const budget = CONFIG.holdBartok[tier];
+    // Hold = min(tier cap, buyer's balance). Self-reported balance is fine:
+    // it's their own escrow — understate and the hold is smaller, overstate and
+    // their escrow funding fails on-chain.
+    const bal = Math.max(0, Math.floor(Number(balance) || 0));
+    if (bal < CONFIG.minHoldBartok[tier]) {
+      return json(res, 400, { error: 'insufficient_credits', needed: CONFIG.minHoldBartok[tier] });
+    }
+    const budget = Math.min(CONFIG.holdBartok[tier], bal);
     const p = await runMiden('build_escrow',
       ['--buyer', buyerId, '--budget', String(budget)], 60000);
     const params = lastJson(p.out);

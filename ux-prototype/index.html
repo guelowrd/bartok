@@ -357,13 +357,14 @@
     $('matchTitle').innerHTML='Finding<br>your helper…';
     $('matchSub').textContent='Matching you with João…';
     try{
-      const s=await fetch(api('/api/session/start'),{method:'POST',body:JSON.stringify({buyerId:w.id(),tier:state.tier})}).then(r=>r.json());
+      const bal0=await refreshBalance();
+      const s=await fetch(api('/api/session/start'),{method:'POST',body:JSON.stringify({buyerId:w.id(),tier:state.tier,balance:String(bal0??0)})}).then(r=>r.json());
       if(s.error==='account_required'){ show('request'); openAuth('Create a free account to unlock the Genius brain.'); return; }
+      if(s.error==='insufficient_credits'){ show('request'); openBuy(); return; }
       if(s.error) throw new Error(s.error);
       state.sessionId=s.sessionId; state.faucet=s.escrowTemplate.faucet;
       state.budget=s.escrowTemplate.budget; state.remaining=state.budget;
-      const bal=await refreshBalance();
-      if(bal!==null && bal < BigInt(state.budget)){ show('request'); openBuy(); return; }
+
       $('matchTitle').innerHTML='Setting aside<br>your credits…';
       $('matchSub').textContent='Holding '+units(state.budget)+' for this chat. The rest comes back when you finish. (Securing it takes ~1-2 min.)';
       const {noteB64}=await w.fundEscrow(s.escrowTemplate);

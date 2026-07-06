@@ -17,13 +17,21 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
+// BARTOK_TEST=1: importable test mode — no listen, no warm-up compile, stubbed
+// Rust/zkTLS externals, isolated users-store, fixture accounts. Lets the whole
+// HTTP surface be integration-tested with plain `node --test` (zero deps).
+const TESTING = process.env.BARTOK_TEST === '1';
+
 const STATIC = __dirname;
 const ROOT = path.resolve(__dirname, '..');
 const TLSN = path.join(ROOT, 'zktls-spike', 'tlsn');
 const MIDEN_INT = path.join(ROOT, 'miden', 'integration');
 const MIDEN_BIN = path.join(ROOT, 'miden', 'target', 'release');
 const ENV_FILE = path.join(ROOT, 'zktls-spike', '.env');
-const ACCOUNTS = JSON.parse(fs.readFileSync(path.join(ROOT, 'miden', 'accounts.json'), 'utf8'));
+const ACCOUNTS = TESTING
+  ? { faucet: '0xfaucet', sellerMultisig: '0xseller', operatorMultisig: '0xoperator',
+      operatorTag: 909639680, guardianHttp: 'http://localhost:3300', guardianGrpc: 'http://localhost:50052' }
+  : JSON.parse(fs.readFileSync(path.join(ROOT, 'miden', 'accounts.json'), 'utf8'));
 
 // ===== ECONOMICS — the ONE place to tune BARTOK's money =====================
 // The Bartok (Ŧ) is a stablecoin pegged to the cheapest LLM token: 1 Basic-model
@@ -106,7 +114,19 @@ function run(cmd, args, cwd, env, timeout = 240000, onChunk) {
 // The miden bins share one sqlite client store — never run two concurrently
 // (double-clicked mints etc. collide and surface as RPC/store errors).
 let midenQueue = Promise.resolve();
+// test stubs: deterministic fake outputs for the Rust bins / zkTLS pipeline
+const TEST_STUBS = {
+  build_escrow: () => JSON.stringify({ sellerRecipient: ['1','2','3','4'], sellerTag: 1,
+    sellerSerial: ['1','2','3','4'], buyerRecipient: ['5','6','7','8'], buyerTag: 2,
+    buyerSerial: ['5','6','7','8'], noteType: '0', requestB64: 'cmVx', noteB64: 'bm90ZQ==' }),
+  fund_buyer: () => JSON.stringify({ txId: '0xtesttx', explorer: 'https://example.test/tx' }),
+  settle_session: () => JSON.stringify({ charge: 42, refund: 458, settleProposalId: '0xprop',
+    sellerNoteId: '0xsn', buyerNoteId: '0xbn', refundNoteFileB64: 'cmVmdW5k',
+    sellerNoteFileB64: null, explorer: 'https://example.test/acct' }),
+  joao_sweep: () => JSON.stringify({ ok: true }),
+};
 function runMiden(bin, args, timeout) {
+  if (TESTING) return Promise.resolve({ code: 0, out: TEST_STUBS[bin] ? TEST_STUBS[bin]() : '{}' });
   const next = midenQueue.then(() => run(path.join(MIDEN_BIN, bin), args, MIDEN_INT, process.env, timeout));
   midenQueue = next.catch(() => {});
   return next;
@@ -137,6 +157,12 @@ function buildMessages(history, prompt) {
 
 let busy = false;
 async function runAnswer(prompt, tier, history, onStage) {
+  if (TESTING) {
+    onStage('answer'); onStage('thinking'); onStage('received'); onStage('verify');
+    const { truncated } = buildMessages(history || [], prompt);
+    return { reply: 'stub reply', reasoning: null, truncated,
+      model: tier === 'genius' ? 'stub-genius' : 'stub-basic', tier, tokens: 42, charge: 42 * (TIERS[tier].pricePerToken) };
+  }
   const tierCfg = TIERS[tier];
   if (!tierCfg) throw new Error(`unknown tier: ${tier}`);
   let { messages, truncated } = buildMessages(history || [], prompt);
@@ -229,6 +255,9 @@ function clientIp(req) {
 }
 // allow `limit` requests per `windowMs`. Returns true if the request is allowed.
 function rateOk(req, bucket, limit, windowMs) {
+  // In test mode the limiter is opt-in (x-test-ratelimit header) so functional
+  // tests aren't throttled while the abuse-guard test still exercises it.
+  if (TESTING && !req.headers['x-test-ratelimit']) return true;
   const now = Date.now();
   const key = `${clientIp(req)}:${bucket}`;
   const hits = (rateHits.get(key) || []).filter(t => now - t < windowMs);
@@ -254,7 +283,9 @@ const usd = units => Number((units * CONFIG.usdPerBartok).toFixed(6));
 
 // ---- auth-lite: {walletId -> {name, salt, hash}} + per-wallet spend + redeemed
 // ponytail: a flat JSON file, not a DB. Good enough for the first Rita cohort.
-const USERS_FILE = path.join(ROOT, 'ux-prototype', 'users.json');
+const USERS_FILE = TESTING
+  ? path.join(require('os').tmpdir(), `bartok-test-users-${process.pid}.json`)
+  : path.join(ROOT, 'ux-prototype', 'users.json');
 function loadUsers() {
   try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); } catch { return {}; }
 }
@@ -550,6 +581,7 @@ const server = http.createServer(async (req, res) => {
 
 // Warm the release builds once at startup so the first message isn't a cold compile.
 function warm() {
+  if (TESTING) return;
   try {
     console.log('[warm] building pipeline (first run compiles; subsequent starts are instant)…');
     execSync('cargo build --release --example openrouter_prove --example openrouter_present --example openrouter_oracle',
@@ -562,9 +594,13 @@ function warm() {
   }
 }
 
-const PORT = process.env.PORT || 8787;
-server.listen(PORT, () => {
-  console.log(`BARTOK bridge -> http://localhost:${PORT}  (seller dashboard: /seller.html)`);
-  console.log(`accounts: sellerMultisig=${ACCOUNTS.sellerMultisig} operatorMultisig=${ACCOUNTS.operatorMultisig} faucet=${ACCOUNTS.faucet} guardian=${ACCOUNTS.guardianHttp}`);
-  warm();
-});
+module.exports = { server, CONFIG, TIERS };
+
+if (require.main === module) {
+  const PORT = process.env.PORT || 8787;
+  server.listen(PORT, () => {
+    console.log(`BARTOK bridge -> http://localhost:${PORT}  (seller dashboard: /seller.html)`);
+    console.log(`accounts: sellerMultisig=${ACCOUNTS.sellerMultisig} operatorMultisig=${ACCOUNTS.operatorMultisig} faucet=${ACCOUNTS.faucet} guardian=${ACCOUNTS.guardianHttp}`);
+    warm();
+  });
+}

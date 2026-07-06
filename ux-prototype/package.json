@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "build:contracts": "cd ../miden/contracts/settlement-note && cargo miden build --release && mkdir -p ../../../ux-prototype/public/packages && cp target/miden/release/bartok*settlement.masp ../../../ux-prototype/public/packages/bartok-settlement.masp"
+    "build:contracts": "cd ../miden/contracts/settlement-note && cargo miden build --release && mkdir -p ../../../ux-prototype/public/packages && cp target/miden/release/bartok*settlement.masp ../../../ux-prototype/public/packages/bartok-settlement.masp",
+    "test": "node --test test/"
   },
   "dependencies": {
     "@miden-sdk/miden-sdk": "0.15.3",

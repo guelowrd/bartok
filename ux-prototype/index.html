@@ -243,8 +243,11 @@
 <script type="module">
   // NOTE: wallet.js pulls the ~15MB WASM SDK — imported LAZILY below so the
   // page shell (tier cards, header) paints instantly instead of waiting on it.
+  import { units, unitsC, usdApprox, DEFAULT_USD_PER_BASE } from "/src/format.js";
   const BACKEND = import.meta.env.VITE_BARTOK_BACKEND || "";
   const api = p => BACKEND + p;
+  let USD_PER_BASE = DEFAULT_USD_PER_BASE;   // refreshed from /api/config
+  const usd = n => usdApprox(n, USD_PER_BASE);
   // ngrok free tier answers browser-UA requests with an HTML interstitial unless
   // this header is sent. Scoped to backend-bound URLs only (Guardian client incl.,
   // via global fetch); Miden RPC / prover / other hosts are untouched.
@@ -277,11 +280,6 @@
   let state={tier:'basic', busy:false, sessionId:null, budget:0, remaining:0,
     spent:0, replies:0, rating:0, tags:[], faucet:null, settling:false};
   const $=id=>document.getElementById(id);
-  // Faucet decimals = 2 (1 base unit = 1 LLM token). Display policy: WHOLE Ŧ
-  // everywhere (sub-1 amounts show '<1 Ŧ'); exact cents appear ONLY on the
-  // final Barter summary (unitsC).
-  const units=n=>{const raw=Number(n);if(raw>0&&raw<100)return '<1 Ŧ';return Math.round(raw/100).toLocaleString()+' Ŧ';};
-  const unitsC=n=>(Number(n)/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+' Ŧ';
   function show(scr){['request','matching','chat','rate','receipt'].forEach(s=>$('s-'+s).classList.toggle('hidden',s!==scr));window.scrollTo(0,0);}
 
   // ---- wallet ----
@@ -289,7 +287,7 @@
   window.w=null; // console access (set once the SDK loads)
   let walletReady=(async()=>{
     const cfg=await fetch(api('/api/config')).then(r=>r.json()).catch(()=>null);
-    if(cfg){ state.faucet=cfg.faucet; USD_PER_BARTOK=cfg.usdPerBartok; ANON_CAP=cfg.anonSpendCap;
+    if(cfg){ state.faucet=cfg.faucet; USD_PER_BASE=cfg.usdPerBartok;
       HOLDS={basic:cfg.tiers.basic.hold, genius:cfg.tiers.genius.hold}; }
     // iOS WebKit kills the SDK's workers (module worker spawns at import-time
     // WASM init, before any option can reach it). Hide Worker BEFORE the SDK
@@ -365,7 +363,7 @@
       buyBusy('Adding your BarŦoks (can take a minute or two)…');
       const n=await w.waitAndAbsorb();
       await refreshAccount(); await refreshBalance();
-      if(n>0){ $('buyMsg').textContent='Added '+units(r.amount)+' ✓'; setTimeout(closeBuy, 1200); }
+      if(n>0){ $('buyMsg').textContent='Added '+units(r.amount)+' (≈'+usd(r.amount)+') ✓'; setTimeout(closeBuy, 1200); }
       else { $('buyMsg').textContent='Your BarŦoks are on their way — they\'ll appear in your balance shortly.'; w.waitAndAbsorb(600000).then(()=>refreshBalance()); setTimeout(closeBuy, 2500); }
     }catch(e){ $('buyMsg').textContent='Something went wrong: '+e.message; }
     $('redeemBtn').disabled=false;
@@ -420,7 +418,7 @@
       state.budget=s.escrowTemplate.budget; state.remaining=state.budget;
 
       $('matchTitle').innerHTML='Setting aside<br>your BarŦoks…';
-      $('matchSub').textContent='Holding '+units(state.budget)+' for this chat. The rest comes back when you finish. (Securing it takes ~1-2 min.)';
+      $('matchSub').textContent='Holding '+units(state.budget)+' (≈'+usd(state.budget)+') for this chat. The rest comes back when you finish. (Securing it takes ~1-2 min.)';
       const {noteB64}=await w.fundEscrow(s.escrowTemplate);
       await fetch(api('/api/session/escrow'),{method:'POST',body:JSON.stringify({sessionId:state.sessionId,noteB64})});
       await refreshBalance();
@@ -506,7 +504,7 @@
       }
       ai._price.className='price';
       const amt=Number(data.charge)<100?'<1 Ŧ':('&minus;'+units(data.charge));
-      ai._price.innerHTML='<span class="amt">'+amt+'</span>'
+      ai._price.innerHTML='<span class="amt">'+amt+' <span style="color:var(--muted)">≈'+usd(data.charge)+'</span></span>'
         +'<span class="v" title="Tap: what does verified mean?">✓ verified</span>'
         +'<span class="model" title="'+data.model+'">'+shortModel(data.model)+'</span>';
       ai._price.querySelector('.v').onclick=()=>openProof(data.model,data.tokens,data.charge);
@@ -579,8 +577,8 @@
       $('receiptBody').innerHTML=
         `<div class="rline"><span>BarŦoker</span><span>${JOAO.emoji} ${JOAO.name}</span></div>
          <div class="rline"><span>Replies</span><span>${state.replies}</span></div>
-         <div class="rline"><span>You used</span><span>${unitsC(data.charge)}</span></div>
-         <div class="rline"><span>Back to you</span><span>${unitsC(data.refund)}</span></div>
+         <div class="rline"><span>You used</span><span>${unitsC(data.charge)} <span style="color:var(--muted)">≈${usd(data.charge)}</span></span></div>
+         <div class="rline"><span>Back to you</span><span>${unitsC(data.refund)} <span style="color:var(--muted)">≈${usd(data.refund)}</span></span></div>
          <div class="rline total"><span>Settlement</span><span><a href="${data.links.operator}" target="_blank">view record ↗</a></span></div>
          <div class="rline"><span>Double-checked</span><span title="${data.settleProposalId}">✓ secured</span></div>
          <div class="rline"><span>Your rating</span><span>${ratedLine}</span></div>

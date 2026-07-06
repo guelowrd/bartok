@@ -267,12 +267,10 @@
   const TIERS={
     // estT = displayed Ŧ per typical reply (deliberately unconservative so real
     // charges feel like good news, not sticker shock).
-    basic:{label:'Basic',price:1,estT:10,eta:'typical answer',model:'nemotron-nano-9b',desc:'fast, simple stuff'},
-    genius:{label:'Genius',price:7,estT:60,eta:'more thinking',model:'llama-3.3-70b class',desc:'most capable, hard asks'},
+    basic:{label:'Basic',price:1,estT:10,eta:'typical answer',desc:'fast, simple stuff'},
+    genius:{label:'Genius',price:7,estT:60,eta:'more thinking',desc:'most capable, hard asks'},
   };
-  let USD_PER_BARTOK=0.01;   // set from /api/config
-  let HOLDS={basic:3000, genius:10000};
-  let ANON_CAP=500;
+  let HOLDS={basic:50000, genius:200000}; // base units; refreshed from /api/config
   const POS_TAGS=['Fast','Helpful','Accurate','Great value','Clear'];
   const NEG_TAGS=['Too slow','Unhelpful','Inaccurate','Overpriced'];
 
@@ -284,7 +282,6 @@
   // final Barter summary (unitsC).
   const units=n=>{const raw=Number(n);if(raw>0&&raw<100)return '<1 Ŧ';return Math.round(raw/100).toLocaleString()+' Ŧ';};
   const unitsC=n=>(Number(n)/100).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+' Ŧ';
-  const usd=n=>'$'+(n*USD_PER_BARTOK).toFixed(2);
   function show(scr){['request','matching','chat','rate','receipt'].forEach(s=>$('s-'+s).classList.toggle('hidden',s!==scr));window.scrollTo(0,0);}
 
   // ---- wallet ----

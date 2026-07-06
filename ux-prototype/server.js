@@ -16,7 +16,6 @@ const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const httpProxy = require('http');
 
 const STATIC = __dirname;
 const ROOT = path.resolve(__dirname, '..');
@@ -223,8 +222,7 @@ function readBody(req) {
 }
 
 // ---- per-IP rate limiter (in-memory sliding window). ponytail: a Map, not Redis.
-const rateHits = new Map(); // key `${ip}:${bucket}` -> timestamps[] (ms since a fixed epoch)
-let rlClock = 0;            // monotonic-ish tick; incremented per request (no Date.now in this env… but here it's fine)
+const rateHits = new Map(); // key `${ip}:${bucket}` -> timestamps[]
 function clientIp(req) {
   const xf = req.headers['x-forwarded-for'];
   return (xf ? String(xf).split(',')[0].trim() : '') || req.socket.remoteAddress || 'unknown';
@@ -285,7 +283,7 @@ const server = http.createServer(async (req, res) => {
   // serves both the app API and Guardian (prod). In dev, Vite proxies instead.
   if (req.url.startsWith('/guardian/') || req.url === '/guardian') {
     const gpath = req.url.replace(/^\/guardian/, '') || '/';
-    const preq = httpProxy.request({ ...GUARDIAN_ORIGIN, path: gpath, method: req.method,
+    const preq = http.request({ ...GUARDIAN_ORIGIN, path: gpath, method: req.method,
       headers: { ...req.headers, host: `localhost:${GUARDIAN_ORIGIN.port}` } }, pres => {
       res.writeHead(pres.statusCode, { ...pres.headers, 'Access-Control-Allow-Origin': '*' });
       pres.pipe(res);
@@ -556,7 +554,7 @@ function warm() {
     console.log('[warm] building pipeline (first run compiles; subsequent starts are instant)…');
     execSync('cargo build --release --example openrouter_prove --example openrouter_present --example openrouter_oracle',
       { cwd: TLSN, stdio: 'ignore' });
-    execSync('cargo build --release -p integration --bin settle_session --bin fund_buyer --bin escrow_params',
+    execSync('cargo build --release -p integration --bin settle_session --bin fund_buyer --bin build_escrow --bin joao_sweep',
       { cwd: MIDEN_INT, stdio: 'ignore' });
     console.log('[warm] ready ✓  (~10-15s per message: ~7-8s answer + verify; settle at session end)');
   } catch (e) {

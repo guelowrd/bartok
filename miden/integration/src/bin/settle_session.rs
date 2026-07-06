@@ -19,7 +19,7 @@ use miden_client::{
     account::AccountId,
     asset::{Asset, FungibleAsset},
     note::{
-        Note, NoteAssets, NoteDetails, NoteFile, NoteTag, NoteType, PartialNoteMetadata,
+        Note, NoteAssets, NoteDetails, NoteFile, NoteTag, PartialNoteMetadata,
     },
     transaction::TransactionRequestBuilder,
     utils::{Deserializable, Serializable},

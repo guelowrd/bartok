@@ -22,7 +22,6 @@ const GUARDIAN_URL = (BACKEND || (typeof location !== "undefined" ? location.ori
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const bytesToHex = (b) => Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 const hexToBytes = (h) => Uint8Array.from(h.match(/.{2}/g).map((x) => parseInt(x, 16)));
-const bytesToB64 = (b) => { let s = ""; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000)); return btoa(s); };
 const b64ToBytes = (b64) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 
 // Guardian allows one pending (non-canonical) delta per account. Back-to-back

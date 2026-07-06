@@ -84,11 +84,13 @@ function loadKey() {
 }
 
 // Async command runner: never rejects — resolves { code, out } with stdout+stderr merged.
-function run(cmd, args, cwd, env, timeout = 240000) {
+// onChunk (optional) sees output as it streams — used to surface REAL pipeline
+// progress (request sent / model answered) to the UI while the proof runs.
+function run(cmd, args, cwd, env, timeout = 240000, onChunk) {
   return new Promise((resolve) => {
     const p = spawn(cmd, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
     let out = '';
-    const cap = d => { out += d; };
+    const cap = d => { out += d; if (onChunk) try { onChunk(String(d)); } catch (_) {} };
     p.stdout.on('data', cap);
     p.stderr.on('data', cap);
     const timer = setTimeout(() => { p.kill('SIGKILL'); }, timeout);
@@ -139,12 +141,18 @@ async function runAnswer(prompt, tier, history, onStage) {
     MESSAGES_JSON: JSON.stringify(messages), MAX_TOKENS: String(maxTokens),
     RUST_LOG: 'error,openrouter_prove=info' };
 
-  // 1) zkTLS: notarize the real model call (429 fallback within the tier only)
+  // 1) zkTLS: notarize the real model call (429 fallback within the tier only).
+  // The prover's own log lines drive honest live stages in the UI.
   onStage('answer');
   let model = null;
   for (const m of tierCfg.models) {
+    let acc = '', sent = false, got = false;
     const r = await run('cargo', ['run', '--release', '--example', 'openrouter_prove'],
-      TLSN, { ...env, MODEL: m });
+      TLSN, { ...env, MODEL: m }, 240000, chunk => {
+        acc += chunk; // match on the accumulated stream — chunk boundaries can split lines
+        if (!sent && acc.includes('Sending request')) { sent = true; onStage('thinking'); }
+        if (!got && acc.includes('Got response: 200')) { got = true; onStage('received'); }
+      });
     if (r.out.includes('Got response: 200')) { model = m; break; }
   }
   if (!model) throw new Error('BUSY'); // tier's free models all rate-limited (429)

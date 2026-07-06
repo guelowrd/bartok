@@ -343,9 +343,9 @@
     Object.entries(TIERS).forEach(([key,t])=>{
       const div=document.createElement('div');
       div.className='cls'+(state.tier===key?' sel':'');
-      const perReply=t.price*300;
+      const perReply=t.price*500;
       div.innerHTML=`<div><div class="name">${t.label}</div><div class="desc">${t.desc}${key==='genius'?' · account needed':''}</div></div>
-        <div class="right"><div class="est">${units(perReply)}<span style="font-size:11px;color:var(--muted)"> /reply</span></div><div class="eta">about a typical answer</div></div>`;
+        <div class="right"><div class="est">${units(perReply)}<span style="font-size:11px;color:var(--muted)"> /reply</span></div><div class="eta">typical answer, thinking included</div></div>`;
       div.onclick=()=>{state.tier=key;renderClasses();};
       $('classes').appendChild(div);
     });

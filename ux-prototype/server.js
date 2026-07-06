@@ -31,8 +31,10 @@ const ACCOUNTS = JSON.parse(fs.readFileSync(path.join(ROOT, 'miden', 'accounts.j
 // token ALWAYS costs 1 Ŧ (the peg anchor). Other tiers are basic-token multiples.
 const CONFIG = {
   usdPerBartok: 0.01,          // display rate on the buy-credits page only
-  anonSpendCapBartok: 500,     // spend allowed before an account is required (=$5)
-  freeGrantBartok: 1000,       // ILOVEBARTOK grant (=$10)
+  // Reasoning models think in paid tokens: a "simple" Basic reply really costs
+  // Ŧ300-1,000. Sizes below give a grant ≈ 10-25 replies, cap ≈ half of it.
+  anonSpendCapBartok: 5000,    // spend allowed before an account is required
+  freeGrantBartok: 10000,      // per ILOVEBARTOK* code (=$100 display value)
   discountCode: 'ILOVEBARTOK',
   geniusMaxTokens: 512,        // cap so a Genius reply can't blow the hold
   // Session hold per tier = min(cap, buyer's balance), with a per-tier floor

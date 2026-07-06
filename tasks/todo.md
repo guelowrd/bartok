@@ -45,6 +45,18 @@ Accounts (this run): Rita `0x7495ed…`, operator `0x3edc50…`, João `0xad383b
   finishes (gets the refund) and starts a fresh chat. Simpler than sequential re-holds.
 - Courier animation: functional staged copy in place; elaborate animation deferred to polish.
 
+## Mobile gotchas (hard-won 2026-07-06)
+- **iOS WebKit kills the miden-sdk workers** → wallet init dies with the SDK's
+  worker-error rehydrator ("Unknown error received from worker", empty payload).
+  TWO layers: (1) MidenClient DROPS useWorker:false internally (SDK bug, report
+  upstream); (2) a MODULE worker spawns at import-time WASM init — before any
+  option can matter. Fix: on iOS UAs, `delete window.Worker` BEFORE the lazy SDK
+  import (session-long); desktop keeps workers. Main-thread is fine — proving is
+  remote.
+- **Debugging phones = error beacons**: POST /api/client-log from the app's
+  catch blocks (ua + stack) → bridge log. Decoded minified frames by rebuilding
+  the identical chunk locally (same content hash) and slicing line/col.
+
 ## Cycle 2 gotchas (hard-won 2026-07-04)
 - **Guardian caps pending proposals at 20 per account; there is NO delete-proposal API.**
   The browser absorb loop originally created a NEW consume proposal on every failed

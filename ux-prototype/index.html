@@ -86,6 +86,9 @@
   .ratehint{font-family:var(--f-disp);text-transform:uppercase;text-align:center;min-height:22px;margin-bottom:10px;}
   .tags{display:flex;flex-wrap:wrap;gap:9px;justify-content:center;margin:6px 0 16px;}
   .label{font-family:var(--f-mono);font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;text-align:center;margin-top:16px;}
+  /* dev footnotes: '*' markers + a small foot line — delete both nodes to remove */
+  .fn{color:var(--muted);}
+  .footnotes{margin-top:22px;font-family:var(--f-mono);font-size:10.5px;color:var(--muted);text-align:center;opacity:.8;}
   /* receipt */
   .rcard{padding:18px;margin:14px 0;}
   .rline{display:flex;justify-content:space-between;padding:6px 0;font-size:14px;font-family:var(--f-mono);gap:10px;}
@@ -164,10 +167,11 @@
       <div><div class="dn" id="rName">João</div><div class="meta" id="rTripMeta"></div></div>
     </div>
     <div class="ratestars" id="stars"><span data-s="1">★</span><span data-s="2">★</span><span data-s="3">★</span><span data-s="4">★</span><span data-s="5">★</span></div>
-    <div class="ratehint" id="rateHint">Tap to rate (ratings are cosmetic for now)</div>
+    <div class="ratehint" id="rateHint">Tap to rate<sup class="fn">*</sup></div>
     <div class="tags" id="tags"></div>
     <button class="btn btn--block" id="submitRate">Finish &amp; get your credits back</button>
     <button class="btn btn--ghost btn--block" id="skipRate" style="margin-top:10px;">Skip rating &amp; settle</button>
+    <p class="footnotes">* ratings are cosmetic for now</p>
   </div>
 </div>
 
@@ -530,7 +534,7 @@
     $('rAvatar').textContent=JOAO.emoji;$('rName').textContent=JOAO.name;
     $('rTripMeta').textContent=state.replies+(state.replies===1?' reply':' replies')+' · '+units(state.spent)+' used';
     $('stars').querySelectorAll('span').forEach(s=>s.classList.remove('on'));
-    $('rateHint').textContent='Tap to rate (ratings are cosmetic for now)';$('tags').innerHTML='';
+    $('rateHint').innerHTML='Tap to rate<sup class="fn">*</sup>';$('tags').innerHTML='';
     show('rate');
   };
   $('stars').querySelectorAll('span').forEach(s=>{

@@ -443,17 +443,23 @@ const server = http.createServer(async (req, res) => {
     if (!rateOk(req, 'redeem', 5, 60000)) return json(res, 429, { error: 'slow down' });
     const { buyerId, code } = JSON.parse(await readBody(req) || '{}');
     if (!buyerId) return json(res, 400, { error: 'missing buyerId' });
-    if ((code || '').trim().toUpperCase() !== CONFIG.discountCode) {
-      return json(res, 400, { error: 'bad_code' });
-    }
+    // Valid codes: ILOVEBARTOK (the shared one) + ILOVEBARTOK_00 … ILOVEBARTOK_99.
+    // Each code is claimable ONCE per wallet (so a wallet can top up ~100x).
+    const c = (code || '').trim().toUpperCase();
+    const ok = c === CONFIG.discountCode || new RegExp(`^${CONFIG.discountCode}_[0-9]{2}$`).test(c);
+    if (!ok) return json(res, 400, { error: 'bad_code' });
     users[buyerId] = users[buyerId] || {};
-    if (users[buyerId].redeemed) return json(res, 400, { error: 'already_redeemed' });
-    console.log(`[credits] ${buyerId} redeem ${CONFIG.discountCode}`);
+    // migrate the old boolean flag to the per-code map
+    const claimed = users[buyerId].codes || (users[buyerId].redeemed ? { [CONFIG.discountCode]: true } : {});
+    if (claimed[c]) return json(res, 400, { error: 'already_redeemed' });
+    console.log(`[credits] ${buyerId} redeem ${c}`);
     const r = await runMiden('fund_buyer',
       ['--buyer', buyerId, '--amount', String(CONFIG.freeGrantBartok)], 240000);
     const out = lastJson(r.out);
     if (r.code !== 0 || !out) return json(res, 500, { error: 'mint failed', detail: r.out.slice(-400) });
-    users[buyerId].redeemed = true;
+    claimed[c] = true;
+    users[buyerId].codes = claimed;
+    delete users[buyerId].redeemed;
     saveUsers(users);
     json(res, 200, { ...out, amount: CONFIG.freeGrantBartok, noteFileB64: out.noteFileB64 || null });
     return;
@@ -483,8 +489,9 @@ const server = http.createServer(async (req, res) => {
   // Whether this wallet has an account (drives the UI gates).
   if (req.method === 'GET' && req.url.startsWith('/api/account?')) {
     const id = new URL(req.url, 'http://x').searchParams.get('buyerId') || '';
-    json(res, 200, { hasAccount: hasAccount(id), name: (users[id] || {}).name || null,
-      spent: spentBy(id), redeemed: !!(users[id] || {}).redeemed });
+    const u = users[id] || {};
+    json(res, 200, { hasAccount: hasAccount(id), name: u.name || null,
+      spent: spentBy(id), codesUsed: Object.keys(u.codes || {}).length + (u.redeemed ? 1 : 0) });
     return;
   }
 

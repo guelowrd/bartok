@@ -457,6 +457,17 @@ const server = http.createServer(async (req, res) => {
     // migrate the old boolean flag to the per-code map
     const claimed = users[buyerId].codes || (users[buyerId].redeemed ? { [CONFIG.discountCode]: true } : {});
     if (claimed[c]) return json(res, 400, { error: 'already_redeemed' });
+    // Numbered codes unlock IN ORDER: the next valid one is the lowest _NN this
+    // wallet hasn't claimed yet (plain ILOVEBARTOK is independent of the ladder).
+    if (c !== CONFIG.discountCode) {
+      let expected = -1;
+      for (let i = 0; i < 100; i++) {
+        const ci = `${CONFIG.discountCode}_${String(i).padStart(2, '0')}`;
+        if (!claimed[ci]) { expected = i; break; }
+      }
+      const next = `${CONFIG.discountCode}_${String(expected).padStart(2, '0')}`;
+      if (c !== next) return json(res, 400, { error: 'wrong_order', next });
+    }
     console.log(`[credits] ${buyerId} redeem ${c}`);
     const r = await runMiden('fund_buyer',
       ['--buyer', buyerId, '--amount', String(CONFIG.freeGrantBartok)], 240000);

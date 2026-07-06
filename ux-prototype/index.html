@@ -323,7 +323,8 @@
       await walletReady;
       const r=await fetch(api('/api/credits/redeem'),{method:'POST',body:JSON.stringify({buyerId:w.id(),code})}).then(r=>r.json());
       if(r.error){
-        const msg={bad_code:'That code isn\'t valid.',already_redeemed:'You\'ve already used that code.'}[r.error]||r.error;
+        const msg={bad_code:'That code isn\'t valid.',already_redeemed:'You\'ve already used that code.',
+          wrong_order:'Codes unlock in order — your next one is '+(r.next||'ILOVEBARTOK_00')+'.'}[r.error]||r.error;
         $('buyMsg').textContent=msg; $('redeemBtn').disabled=false; return;
       }
       buyBusy('Adding your credits (can take a minute or two)…');

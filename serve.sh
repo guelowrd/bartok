@@ -33,4 +33,5 @@ fi
 echo "Guardian up ✓  ($(curl -s http://localhost:3300/pubkey | head -c 60)…)"
 
 echo "starting the bridge on :8787 (proxies /guardian → :3300)…"
-exec node "$DIR/ux-prototype/server.js"
+# caffeinate: keep the Mac awake while the backend runs (dies with the bridge)
+exec caffeinate -dims node "$DIR/ux-prototype/server.js"

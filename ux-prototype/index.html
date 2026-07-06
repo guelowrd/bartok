@@ -280,6 +280,12 @@
     const cfg=await fetch(api('/api/config')).then(r=>r.json()).catch(()=>null);
     if(cfg){ state.faucet=cfg.faucet; USD_PER_BARTOK=cfg.usdPerBartok; ANON_CAP=cfg.anonSpendCap;
       HOLDS={basic:cfg.tiers.basic.hold, genius:cfg.tiers.genius.hold}; }
+    // iOS WebKit kills the SDK's workers (module worker spawns at import-time
+    // WASM init, before any option can reach it). Hide Worker BEFORE the SDK
+    // loads so every layer takes its main-thread path; desktop keeps workers.
+    if (/iP(hone|ad|od)/.test(navigator.userAgent)) {
+      try { delete window.Worker; } catch (_) { window.Worker = undefined; }
+    }
     // Load the heavy SDK only now — the shell has already painted.
     const { BartokWallet } = await import("/src/wallet.js");
     w=new BartokWallet(); window.w=w;

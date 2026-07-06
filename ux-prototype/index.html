@@ -243,8 +243,10 @@
   // reply's model identity comes from the zkTLS proof, not from this UI.
   const JOAO={name:'João',emoji:'🇵🇹',rating:5.0};
   const TIERS={
-    basic:{label:'Basic',price:1,model:'nemotron-nano-9b',desc:'fast, simple stuff'},
-    genius:{label:'Genius',price:7,model:'llama-3.3-70b class',desc:'most capable, hard asks'},
+    // est = measured typical tokens/reply (2026-07-06): basic ~925-1,042 incl.
+    // thinking+memory; genius ~534 (output capped at 512) — charged at 7x.
+    basic:{label:'Basic',price:1,est:1000,model:'nemotron-nano-9b',desc:'fast, simple stuff'},
+    genius:{label:'Genius',price:7,est:550,model:'llama-3.3-70b class',desc:'most capable, hard asks'},
   };
   let USD_PER_BARTOK=0.01;   // set from /api/config
   let HOLDS={basic:3000, genius:10000};
@@ -362,7 +364,7 @@
     Object.entries(TIERS).forEach(([key,t])=>{
       const div=document.createElement('div');
       div.className='cls'+(state.tier===key?' sel':'');
-      const perReply=t.price*1000; // measured: ~1,000 tokens/reply incl. thinking + memory
+      const perReply=Math.round(t.price*t.est/500)*500; // measured per-tier, rounded to Ŧ500
       div.innerHTML=`<div><div class="name">${t.label}</div><div class="desc">${t.desc}${key==='genius'?' · account needed':''}</div></div>
         <div class="right"><div class="est">${units(perReply)}<span style="font-size:11px;color:var(--muted)"> /reply</span></div><div class="eta">typical answer, thinking included</div></div>`;
       div.onclick=()=>{state.tier=key;renderClasses();};

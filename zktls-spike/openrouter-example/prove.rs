@@ -42,7 +42,7 @@ const SERVER_DOMAIN: &str = "openrouter.ai";
 const ROUTE: &str = "/api/v1/chat/completions";
 const USER_AGENT: &str = "bartok-zktls-spike/0.1";
 // MPC preprocessing limits. Keep modest; larger = slower MPC.
-const MAX_SENT_DATA: usize = 1 << 14; // 16 KiB (request + headers + body; fits bounded chat history)
+const MAX_SENT_DATA: usize = 1 << 12; // 4 KiB — 8/16 KiB exceed the MPC mux stream cap ("maximum number of streams reached"); history budget must fit this
 const MAX_RECV_DATA: usize = 1 << 16; // 64 KiB (response)
 
 /// Real web-PKI root store (Mozilla roots, DER-encoded).
@@ -72,7 +72,7 @@ async fn prover<S: AsyncWrite + AsyncRead + Send + Sync + Unpin + 'static>(socke
     let max_tokens: u32 = env::var("MAX_TOKENS").ok().and_then(|v| v.parse().ok()).unwrap_or(1024);
 
     // messages: prefer a full JSON array in MESSAGES_JSON (conversation memory,
-    // last N turns); fall back to a single-turn PROMPT. MAX_SENT_DATA (16 KiB)
+    // last N turns); fall back to a single-turn PROMPT. MAX_SENT_DATA (4 KiB)
     // caps how much history fits in the notarized request.
     let messages: serde_json::Value = match env::var("MESSAGES_JSON") {
         Ok(j) => serde_json::from_str(&j).context("MESSAGES_JSON is not valid JSON")?,

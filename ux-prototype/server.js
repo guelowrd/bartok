@@ -110,9 +110,9 @@ function lastJson(out) {
 
 // ---- the zkTLS answer pipeline (one message) --------------------------------
 // Bounded conversation history: keep the last turns that fit a byte budget
-// (must stay under the notarized request's MAX_SENT_DATA of 16 KiB). Returns
-// { messages, truncated } — truncated=true when older turns were dropped.
-const HISTORY_BUDGET = 9000; // conservative vs 16 KiB (headers + framing + reply schema)
+// (must stay under the notarized request's MAX_SENT_DATA of 4 KiB — larger
+// budgets exceed the MPC mux stream cap). Returns { messages, truncated }.
+const HISTORY_BUDGET = 2400; // conservative vs 4 KiB (headers + auth + body framing)
 function buildMessages(history, prompt) {
   const turns = [...history, { role: 'user', content: prompt }];
   let kept = [], size = 0, truncated = false;

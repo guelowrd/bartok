@@ -310,11 +310,11 @@
         const msg={bad_code:'That code isn\'t valid.',already_redeemed:'You\'ve already used a code.'}[r.error]||r.error;
         $('buyMsg').textContent=msg; $('redeemBtn').disabled=false; return;
       }
-      $('buyMsg').textContent='Adding your credits (a few seconds)…';
-      await w.waitAndAbsorb();
+      $('buyMsg').textContent='Adding your credits (can take a minute or two)…';
+      const n=await w.waitAndAbsorb();
       await refreshAccount(); await refreshBalance();
-      $('buyMsg').textContent='Added '+units(r.amount)+' ✓';
-      setTimeout(closeBuy, 1200);
+      if(n>0){ $('buyMsg').textContent='Added '+units(r.amount)+' ✓'; setTimeout(closeBuy, 1200); }
+      else { $('buyMsg').textContent='Your credits are on their way — they\'ll appear in your balance shortly.'; w.waitAndAbsorb(600000).then(()=>refreshBalance()); setTimeout(closeBuy, 2500); }
     }catch(e){ $('buyMsg').textContent='Something went wrong: '+e.message; }
     $('redeemBtn').disabled=false;
   };

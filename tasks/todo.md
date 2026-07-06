@@ -37,6 +37,15 @@ Accounts (this run): Rita `0x7495ed…`, operator `0x3edc50…`, João `0xad383b
 - Courier animation: functional staged copy in place; elaborate animation deferred to polish.
 
 ## Cycle 2 gotchas (hard-won 2026-07-04)
+- **Guardian caps pending proposals at 20 per account; there is NO delete-proposal API.**
+  The browser absorb loop originally created a NEW consume proposal on every failed
+  attempt → hit the cap and semi-bricked test account 0xea88db… (abandoned, ~Ŧ1000
+  testnet dust + 20 stale proposals). Fix mirrors the Rust lesson: RESUME-FIRST
+  (re-execute an existing proposal matching the available note ids), execute ONCE per
+  poll (a failed execute leaves an orphaned delta that must discard first), never
+  blind-retry proposal creation. First-sync note discovery on testnet can exceed 3 min
+  → absorb windows are 300s with a graceful "on their way" fallback in the buy modal.
+
 - **DUAL @miden-sdk WASM INSTANCE = the big one.** ux-prototype (0.15.3) + the linked
   Guardian multisig client (was 0.15.0) each loaded their own @miden-sdk WASM. wasm-bindgen
   rejects cross-instance values ("array contains a value of the wrong type" from

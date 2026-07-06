@@ -105,20 +105,33 @@ export class BartokWallet {
     return bal ? bal.amount : 0n;
   }
 
-  /** Consume every available note (mints, refunds) via a Guardian consume proposal. */
+  /** Consume every available note (mints, refunds) via a Guardian consume proposal.
+   * Resume-first: Guardian allows ONE pending delta per account and caps pending
+   * proposals at 20 — so re-execute an existing proposal for these notes instead
+   * of piling up new ones, and execute ONCE (a failed execute leaves an orphaned
+   * delta that must discard before the next poll can succeed). */
   async absorbNotes() {
     await this.client.sync();
     const available = await this.client.notes.listAvailable({ account: this.id() });
     if (!available.length) return 0;
     const ids = available.map((r) => r.id().toString());
-    const proposal = await withPendingRetry(() => this.multisig.createConsumeNotesProposal(ids));
-    await this.multisig.signProposal(proposal.id);
-    await withPendingRetry(() => this.multisig.executeProposal(proposal.id));
+
+    const proposals = await this.multisig.syncProposals().catch(() => []);
+    let proposal = proposals.find((p) =>
+      p.metadata && p.metadata.proposalType === 'consume_notes' &&
+      (p.metadata.noteIds || []).some((id) => ids.includes(id)));
+    if (proposal) {
+      await this.multisig.signProposal(proposal.id).catch(() => {}); // already-signed is fine
+    } else {
+      proposal = await this.multisig.createConsumeNotesProposal(ids);
+      await this.multisig.signProposal(proposal.id);
+    }
+    await this.multisig.executeProposal(proposal.id);
     await this.client.sync();
     return ids.length;
   }
 
-  async waitAndAbsorb(timeoutMs = 180000, everyMs = 6000) {
+  async waitAndAbsorb(timeoutMs = 300000, everyMs = 6000) {
     const t0 = Date.now();
     while (Date.now() - t0 < timeoutMs) {
       const n = await this.absorbNotes().catch(() => 0);
@@ -129,7 +142,7 @@ export class BartokWallet {
   }
 
   /** Import a private note file (refund) into the store, then consume it. */
-  async absorbNoteFile(noteFileB64, timeoutMs = 180000) {
+  async absorbNoteFile(noteFileB64, timeoutMs = 300000) {
     const { NoteFile } = await import("@miden-sdk/miden-sdk");
     await this.client.notes.import(NoteFile.deserialize(b64ToBytes(noteFileB64)));
     return this.waitAndAbsorb(timeoutMs);

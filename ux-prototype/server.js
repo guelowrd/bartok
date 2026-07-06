@@ -253,7 +253,7 @@ const server = http.createServer(async (req, res) => {
   // CORS for the (cross-origin) hosted buyer app. Permissive: this backend
   // holds only testnet funds; tighten to the Vercel origin for a real launch.
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'content-type,x-pubkey,x-signature,x-timestamp,ngrok-skip-browser-warning');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
 

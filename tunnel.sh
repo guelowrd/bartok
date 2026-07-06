@@ -16,5 +16,7 @@ curl -s --max-time 2 http://localhost:8787/api/config >/dev/null 2>&1 || { echo 
 DOMAIN_FILE="$DIR/guardian/.tunnel-domain"
 [ -s "$DOMAIN_FILE" ] || { echo "no static domain configured:"; echo "  echo \"<your-name>.ngrok-free.app\" > guardian/.tunnel-domain"; echo "  (claim it free: ngrok dashboard → Domains)"; exit 1; }
 DOMAIN="$(tr -d '[:space:]' < "$DOMAIN_FILE")"
+# take over: ngrok free tier allows ONE agent session — stop any previous one
+pkill -f "ngrok http" 2>/dev/null && sleep 1 || true
 echo "backend public URL: https://$DOMAIN"
 exec ngrok http --domain="$DOMAIN" 8787

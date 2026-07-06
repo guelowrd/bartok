@@ -277,6 +277,9 @@
         await refreshAccount();
         await refreshBalance();
         $('findBtn').disabled=false;
+        // Self-heal: any credits minted but not yet collected (page closed or
+        // reloaded mid-redeem) get absorbed in the background on every visit.
+        w.absorbNotes().then(n=>{ if(n>0) refreshBalance(); }).catch(()=>{});
         return;
       }catch(e){
         console.error('wallet init attempt '+attempt+' failed',e);
@@ -308,13 +311,14 @@
 
   // ---- Buy credits (mock card + discount code) ----
   function openBuy(){ $('buyModal').classList.remove('hidden'); $('buyMsg').textContent=''; $('codeInput').value=''; }
+  const buyBusy=m=>{ $('buyMsg').innerHTML='<span class="radar-mini" style="margin-right:8px;"></span>'+m; };
   function closeBuy(){ $('buyModal').classList.add('hidden'); }
   $('buyClose').onclick=closeBuy;
   $('buyModal').onclick=e=>{ if(e.target===$('buyModal')) closeBuy(); };
   $('redeemBtn').onclick=async()=>{
     const code=$('codeInput').value.trim();
     if(!code){ $('buyMsg').textContent='Enter your code.'; return; }
-    $('redeemBtn').disabled=true; $('buyMsg').textContent='Redeeming…';
+    $('redeemBtn').disabled=true; buyBusy('Redeeming…');
     try{
       await walletReady;
       const r=await fetch(api('/api/credits/redeem'),{method:'POST',body:JSON.stringify({buyerId:w.id(),code})}).then(r=>r.json());
@@ -322,7 +326,7 @@
         const msg={bad_code:'That code isn\'t valid.',already_redeemed:'You\'ve already used that code.'}[r.error]||r.error;
         $('buyMsg').textContent=msg; $('redeemBtn').disabled=false; return;
       }
-      $('buyMsg').textContent='Adding your credits (can take a minute or two)…';
+      buyBusy('Adding your credits (can take a minute or two)…');
       const n=await w.waitAndAbsorb();
       await refreshAccount(); await refreshBalance();
       if(n>0){ $('buyMsg').textContent='Added '+units(r.amount)+' ✓'; setTimeout(closeBuy, 1200); }

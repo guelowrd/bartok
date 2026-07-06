@@ -15,6 +15,14 @@
   .balance b{font-size:17px;} .balance b.low{color:var(--coral);}
   .fundbtn{font-family:var(--f-ui);font-weight:700;background:var(--panel);border:2.5px solid var(--ink);border-radius:10px;box-shadow:var(--sh-sm);padding:6px 10px;cursor:pointer;font-size:12px;}
   .fundbtn:active{transform:translate(2px,2px);box-shadow:none;}
+  @media (max-width:520px){
+    header{padding:9px 10px;gap:8px;}
+    .hdr-right{gap:8px;}
+    .earn-link{display:none;}           /* seller door is desktop-only for now */
+    .balance{font-size:11px;} .balance b{font-size:14px;}
+    .fundbtn{padding:5px 8px;font-size:11px;}
+    .brand{font-size:18px;}
+  }
   .scroll{flex:1 1 auto;overflow-y:auto;}
   .inner{max-width:680px;margin:0 auto;padding:22px 18px;}
   .sub{color:var(--muted);margin:8px 0 22px;font-weight:500;}
@@ -249,8 +257,8 @@
   const TIERS={
     // est = measured typical tokens/reply (2026-07-06): basic ~925-1,042 incl.
     // thinking+memory; genius ~534 (output capped at 512) — charged at 7x.
-    basic:{label:'Basic',price:1,est:1000,model:'nemotron-nano-9b',desc:'fast, simple stuff'},
-    genius:{label:'Genius',price:7,est:550,model:'llama-3.3-70b class',desc:'most capable, hard asks'},
+    basic:{label:'Basic',price:1,est:400,eta:'typical answer',model:'nemotron-nano-9b',desc:'fast, simple stuff'},
+    genius:{label:'Genius',price:7,est:550,eta:'typical answer, thinking included',model:'llama-3.3-70b class',desc:'most capable, hard asks'},
   };
   let USD_PER_BARTOK=0.01;   // set from /api/config
   let HOLDS={basic:3000, genius:10000};
@@ -370,7 +378,7 @@
       div.className='cls'+(state.tier===key?' sel':'');
       const perReply=Math.round(t.price*t.est/500)*500; // measured per-tier, rounded to Ŧ500
       div.innerHTML=`<div><div class="name">${t.label}</div><div class="desc">${t.desc}${key==='genius'?' · account needed':''}</div></div>
-        <div class="right"><div class="est">${units(perReply)}<span style="font-size:11px;color:var(--muted)"> /reply</span></div><div class="eta">typical answer, thinking included</div></div>`;
+        <div class="right"><div class="est">${units(perReply)}<span style="font-size:11px;color:var(--muted)"> /reply</span></div><div class="eta">${t.eta}</div></div>`;
       div.onclick=()=>{state.tier=key;renderClasses();};
       $('classes').appendChild(div);
     });

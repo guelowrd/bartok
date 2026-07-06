@@ -37,7 +37,12 @@ const CONFIG = {
   anonSpendCapBartok: 5000000, // spend allowed before an account is required (=$0.50)
   freeGrantBartok: 10000000,   // per ILOVEBARTOK* code (=$1) ≈ thousands of replies
   discountCode: 'ILOVEBARTOK',
-  geniusMaxTokens: 512,        // cap so a Genius reply can't blow the hold
+  // Reply budget covers REASONING + the visible answer. Reasoning models can
+  // burn 500-1,500 tokens thinking before they write — a tight cap makes them
+  // 'spend the whole budget thinking' with nothing left to say. At honest
+  // pricing a maxed reply is Ŧ2,048 (basic $0.0002) / Ŧ14,336 (genius $0.0014):
+  // well inside the session holds (50k / 200k).
+  maxTokens: { basic: 2048, genius: 2048 },
   // Session hold per tier = min(cap, buyer's balance), with a per-tier floor
   // (enough for at least ~1 reply). Small by design — not a $250 pre-auth.
   // Measured (2026-07-06): basic reply Ŧ925 first message, Ŧ1,042 with history
@@ -135,8 +140,13 @@ let busy = false;
 async function runAnswer(prompt, tier, history, onStage) {
   const tierCfg = TIERS[tier];
   if (!tierCfg) throw new Error(`unknown tier: ${tier}`);
-  const { messages, truncated } = buildMessages(history || [], prompt);
-  const maxTokens = tier === 'genius' ? CONFIG.geniusMaxTokens : 1024;
+  let { messages, truncated } = buildMessages(history || [], prompt);
+  // Basic = answers, not deliberation: '/no_think' (nemotron's control message)
+  // turns reasoning off so the whole budget is visible output — measured: the
+  // pi question went from 2,072 tokens of pure thinking to a 175-token answer.
+  // (The OpenRouter unified reasoning param errors on this model; this works.)
+  if (tier !== 'genius') messages = [{ role: 'system', content: '/no_think' }, ...messages];
+  const maxTokens = CONFIG.maxTokens[tier] || 2048;
   const env = { ...process.env, OPENROUTER_API_KEY: loadKey(),
     MESSAGES_JSON: JSON.stringify(messages), MAX_TOKENS: String(maxTokens),
     RUST_LOG: 'error,openrouter_prove=info' };

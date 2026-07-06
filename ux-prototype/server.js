@@ -40,8 +40,10 @@ const CONFIG = {
   geniusMaxTokens: 512,        // cap so a Genius reply can't blow the hold
   // Session hold per tier = min(cap, buyer's balance), with a per-tier floor
   // (enough for at least ~1 reply). Small by design — not a $250 pre-auth.
-  holdBartok: { basic: 10000, genius: 50000 },
-  minHoldBartok: { basic: 1000, genius: 5000 },
+  // Measured (2026-07-06): basic reply Ŧ925 first message, Ŧ1,042 with history
+  // riding along — call it ~Ŧ1,000-1,600/message. Holds sized for a real session.
+  holdBartok: { basic: 50000, genius: 200000 },   // ~30-40 / ~25-35 messages
+  minHoldBartok: { basic: 2500, genius: 10000 },  // > one worst-case reply
 };
 
 // João's two real tiers: distinct free OpenRouter models, distinct per-token

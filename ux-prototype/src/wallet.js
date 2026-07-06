@@ -52,7 +52,10 @@ export class BartokWallet {
     // multisig client offloads proving to. Reads go through getOrImport (below)
     // to re-register the account in this client's SMT forest after a multisig
     // write updates the shared store.
-    this.client = await MidenClient.createTestnet({ storeName: STORE_NAME, proverUrl: "testnet" });
+    // useWorker:false — iOS WebKit kills the SDK's web worker ("Unknown error
+    // received from worker" on every init); main-thread WASM works everywhere
+    // and heavy proving is remote anyway.
+    this.client = await MidenClient.createTestnet({ storeName: STORE_NAME, proverUrl: "testnet", useWorker: false });
     await this.client.sync();
 
     // Persistent Falcon signer (never regenerate — that would orphan the account).

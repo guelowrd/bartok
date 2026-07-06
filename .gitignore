@@ -33,3 +33,4 @@ guardian/keys/
 guardian/.env
 miden/guardian-accounts/
 ux-prototype/users.json
+guardian/*.log

@@ -87,5 +87,7 @@ testers queue under load; fine for the first cohort.
 ## Economics (all in `ux-prototype/server.js` CONFIG)
 
 Ŧ is pegged to the cheapest token: 1 Basic token = 1 Ŧ (anchor). Display rate
-Ŧ1 = $0.01. Genius = 7 Ŧ/token (account required). ILOVEBARTOK = Ŧ1,000. Anon
-spend cap Ŧ500. Holds: Basic Ŧ3,000, Genius Ŧ10,000 (capped by balance).
+Ŧ1 = $0.00001 ($10/M tokens — verified-rail premium over ~$0.1-0.5/M raw cost).
+Genius = 7 Ŧ/token (account required). Codes ILOVEBARTOK + _00.._99 = Ŧ100,000
+($1) each, once per wallet. Anon spend cap Ŧ50,000. Holds: Basic Ŧ3,000,
+Genius Ŧ10,000 (min of cap and balance). Faucet max supply: 100M Ŧ.

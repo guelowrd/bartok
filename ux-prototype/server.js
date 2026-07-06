@@ -30,11 +30,12 @@ const ACCOUNTS = JSON.parse(fs.readFileSync(path.join(ROOT, 'miden', 'accounts.j
 // The Bartok (Ŧ) is a stablecoin pegged to the cheapest LLM token: 1 Basic-model
 // token ALWAYS costs 1 Ŧ (the peg anchor). Other tiers are basic-token multiples.
 const CONFIG = {
-  usdPerBartok: 0.01,          // display rate on the buy-credits page only
-  // Reasoning models think in paid tokens: a "simple" Basic reply really costs
-  // Ŧ300-1,000. Sizes below give a grant ≈ 10-25 replies, cap ≈ half of it.
-  anonSpendCapBartok: 5000,    // spend allowed before an account is required
-  freeGrantBartok: 10000,      // per ILOVEBARTOK* code (=$100 display value)
+  // Honest rate: cheap raw tokens go for ~$0.05-0.5 per MILLION; we price the
+  // verified rail at $10/M (Ŧ1 = $0.00001) — a marketplace premium, not fantasy.
+  // Faucet max supply is 100M Ŧ — grant sizes must respect it (100 codes/wallet).
+  usdPerBartok: 0.00001,       // display rate on the buy-credits page only
+  anonSpendCapBartok: 50000,   // spend allowed before an account is required (=$0.50)
+  freeGrantBartok: 100000,     // per ILOVEBARTOK* code (=$1) ≈ 100-300 replies
   discountCode: 'ILOVEBARTOK',
   geniusMaxTokens: 512,        // cap so a Genius reply can't blow the hold
   // Session hold per tier = min(cap, buyer's balance), with a per-tier floor
@@ -231,7 +232,7 @@ function ndjsonHead(res) {
   return obj => res.write(JSON.stringify(obj) + '\n');
 }
 
-const usd = units => Number((units * CONFIG.usdPerBartok).toFixed(2));
+const usd = units => Number((units * CONFIG.usdPerBartok).toFixed(4));
 
 // ---- auth-lite: {walletId -> {name, salt, hash}} + per-wallet spend + redeemed
 // ponytail: a flat JSON file, not a DB. Good enough for the first Rita cohort.

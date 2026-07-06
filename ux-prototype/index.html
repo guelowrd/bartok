@@ -16,6 +16,7 @@
   .fundbtn{font-family:var(--f-ui);font-weight:700;background:var(--panel);border:2.5px solid var(--ink);border-radius:10px;box-shadow:var(--sh-sm);padding:6px 10px;cursor:pointer;font-size:12px;}
   .fundbtn:active{transform:translate(2px,2px);box-shadow:none;}
   @media (max-width:520px){
+    .tier-hint{display:none;}
     .price{min-width:76px;font-size:11px;}
     .price .model{font-size:9px;}
     header{padding:9px 10px;gap:8px;}
@@ -138,17 +139,19 @@
         <div style="font-size:12px;color:var(--muted);"><span id="dbStars">★★★★★</span> <span id="dbBudget"></span> · ✓ verified</div>
       </div>
     </div>
-    <button class="endbtn" id="endBtn">End &amp; rate</button>
   </div>
   <div class="chat" id="chat"><div class="inner" id="thread"></div></div>
   <div class="composer">
     <div class="cinner">
-      <div>
-        <span class="seg" id="seg">
-          <button data-tier="basic" class="sel">Basic</button>
-          <button data-tier="genius">Genius</button>
-        </span>
-        <span class="tier-hint" id="tierHint"></span>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
+        <div style="min-width:0;">
+          <span class="seg" id="seg">
+            <button data-tier="basic" class="sel">Basic</button>
+            <button data-tier="genius">Genius</button>
+          </span>
+          <span class="tier-hint" id="tierHint"></span>
+        </div>
+        <button class="endbtn" id="endBtn">End barter</button>
       </div>
       <div class="inputbar">
         <textarea id="input" rows="1" placeholder="Type a message…"></textarea>

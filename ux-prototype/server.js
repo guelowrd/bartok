@@ -307,6 +307,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Client-side error beacon: mobile browsers have no visible console — the
+  // app posts wallet-init failures here so they land in the bridge log.
+  if (req.method === 'POST' && req.url === '/api/client-log') {
+    if (!rateOk(req, 'clientlog', 30, 60000)) return json(res, 429, { error: 'slow down' });
+    const b = await readBody(req);
+    console.log('[client]', String(b).slice(0, 600));
+    return json(res, 200, { ok: true });
+  }
+
   if (req.method === 'GET' && req.url === '/api/config') {
     json(res, 200, { faucet: ACCOUNTS.faucet, seller: ACCOUNTS.sellerMultisig,
       usdPerBartok: CONFIG.usdPerBartok, anonSpendCap: CONFIG.anonSpendCapBartok,

@@ -297,8 +297,12 @@
         return;
       }catch(e){
         console.error('wallet init attempt '+attempt+' failed',e);
+        // surface mobile failures to the bridge log (no console on phones)
+        fetch(api('/api/client-log'),{method:'POST',body:JSON.stringify({
+          ua:navigator.userAgent.slice(0,120), attempt,
+          err:String(e&&(e.stack||e.message)||e).slice(0,400)})}).catch(()=>{});
         if(attempt<3){ $('bal').textContent='setting up…'; await new Promise(r=>setTimeout(r,3000)); }
-        else $('bal').textContent='tap to retry';
+        else { $('bal').textContent='tap to retry'; $('balWrap').title=String(e&&e.message||e).slice(0,200); }
       }
     }
   })();

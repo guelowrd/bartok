@@ -52,10 +52,16 @@ export class BartokWallet {
     // multisig client offloads proving to. Reads go through getOrImport (below)
     // to re-register the account in this client's SMT forest after a multisig
     // write updates the shared store.
-    // useWorker:false — iOS WebKit kills the SDK's web worker ("Unknown error
-    // received from worker" on every init); main-thread WASM works everywhere
-    // and heavy proving is remote anyway.
-    this.client = await MidenClient.createTestnet({ storeName: STORE_NAME, proverUrl: "testnet", useWorker: false });
+    // iOS WebKit kills the SDK's web worker on init ("Unknown error received
+    // from worker"). useWorker:false SHOULD fix it but MidenClient drops the
+    // flag internally (verified: worker script still fetched) — so hide Worker
+    // during init to force the shim's own no-worker branch, then restore.
+    // Main-thread WASM runs everywhere; the heavy proving is remote anyway.
+    const RealWorker = window.Worker;
+    try { delete window.Worker; } catch (_) { window.Worker = undefined; }
+    try {
+      this.client = await MidenClient.createTestnet({ storeName: STORE_NAME, proverUrl: "testnet", useWorker: false });
+    } finally { window.Worker = RealWorker; }
     await this.client.sync();
 
     // Persistent Falcon signer (never regenerate — that would orphan the account).

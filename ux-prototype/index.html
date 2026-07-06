@@ -16,6 +16,8 @@
   .fundbtn{font-family:var(--f-ui);font-weight:700;background:var(--panel);border:2.5px solid var(--ink);border-radius:10px;box-shadow:var(--sh-sm);padding:6px 10px;cursor:pointer;font-size:12px;}
   .fundbtn:active{transform:translate(2px,2px);box-shadow:none;}
   @media (max-width:520px){
+    .price{min-width:76px;font-size:11px;}
+    .price .model{font-size:9px;}
     header{padding:9px 10px;gap:8px;}
     .hdr-right{gap:8px;}
     .earn-link{display:none;}           /* seller door is desktop-only for now */
@@ -408,7 +410,7 @@
       state.sessionId=s.sessionId; state.faucet=s.escrowTemplate.faucet;
       state.budget=s.escrowTemplate.budget; state.remaining=state.budget;
 
-      $('matchTitle').innerHTML='Setting aside<br>your credits…';
+      $('matchTitle').innerHTML='Setting aside<br>your Bartoks…';
       $('matchSub').textContent='Holding '+units(state.budget)+' for this chat. The rest comes back when you finish. (Securing it takes ~1-2 min.)';
       const {noteB64}=await w.fundEscrow(s.escrowTemplate);
       await fetch(api('/api/session/escrow'),{method:'POST',body:JSON.stringify({sessionId:state.sessionId,noteB64})});
@@ -450,6 +452,7 @@
     $('thread').appendChild(row);$('chat').scrollTop=$('chat').scrollHeight;return row;
   }
 
+  const shortModel=m=>String(m||'').split('/').pop().replace(/:free$/,'');
   const STAGE_LABELS={answer:'Delivering your question…', thinking:'João is thinking…',
     received:"Answer's in — sealing the proof…", verify:"Checking it's genuine…", settle:'Wrapping up your chat…'};
   async function sendMsg(){ const text=input.value.trim(); if(!text) return; input.value=''; input.style.height='auto'; await runMessage(text, state.tier, false); }
@@ -495,7 +498,7 @@
       ai._price.className='price';
       ai._price.innerHTML='<span class="amt">&minus;'+units(data.charge)+'</span>'
         +'<span class="v" title="Tap: what does verified mean?">✓ verified</span>'
-        +'<span class="model">'+data.model+'</span>';
+        +'<span class="model" title="'+data.model+'">'+shortModel(data.model)+'</span>';
       ai._price.querySelector('.v').onclick=()=>openProof(data.model,data.tokens,data.charge);
       if(tier==='basic'){
         const boost=document.createElement('span');

@@ -34,3 +34,4 @@ guardian/.env
 miden/guardian-accounts/
 ux-prototype/users.json
 guardian/*.log
+guardian/.tunnel-domain

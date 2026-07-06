@@ -215,6 +215,21 @@
   import { BartokWallet } from "/src/wallet.js";
   const BACKEND = import.meta.env.VITE_BARTOK_BACKEND || "";
   const api = p => BACKEND + p;
+  // ngrok free tier answers browser-UA requests with an HTML interstitial unless
+  // this header is sent. Scoped to backend-bound URLs only (Guardian client incl.,
+  // via global fetch); Miden RPC / prover / other hosts are untouched.
+  if (BACKEND) {
+    const _fetch = window.fetch.bind(window);
+    window.fetch = (u, o = {}) => {
+      const url = String(u instanceof Request ? u.url : u);
+      if (url.startsWith(BACKEND)) {
+        const h = new Headers(o.headers || (u instanceof Request ? u.headers : undefined) || {});
+        h.set('ngrok-skip-browser-warning', '1');
+        o = { ...o, headers: h };
+      }
+      return _fetch(u, o);
+    };
+  }
 
   // João — the single real seller. His two tiers are two real models; every
   // reply's model identity comes from the zkTLS proof, not from this UI.

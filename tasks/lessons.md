@@ -18,3 +18,9 @@ dead-end error with no retry for a full day.
 Rules: every scripted replace carries `assert old in s`; UI copy that encodes
 behavior (retry buttons, error mappings) gets a static guard test; verify the
 DEPLOYED artifact contains the change, not just the commit message.
+
+## 2026-07-07 — Vite HMR reloads the page mid browser-test
+Edited index.html while a browser-driven two-barter test was running on the Vite
+dev server; HMR hot-reloaded the tab and wiped window state, killing the test.
+Rule: never edit ux-prototype/ files while a browser test runs against :5173 —
+finish/observe the test first, or test against a built artifact.

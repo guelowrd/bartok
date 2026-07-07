@@ -45,6 +45,19 @@ Accounts (this run): Rita `0x7495ed…`, operator `0x3edc50…`, João `0xad383b
   finishes (gets the refund) and starts a fresh chat. Simpler than sequential re-holds.
 - Courier animation: functional staged copy in place; elaborate animation deferred to polish.
 
+## Deep audit 2026-07-07 (3 parallel expert reviewers: security / architecture / UX)
+Two-barter bug NOT reproducible after fixes — verified: 2 full back-to-back barters
+(escrow→settle→refund ×2) clean through real multisig+bridge. Likely original cause was
+the operator delta-wedge on rapid retries + the retry UI that never shipped (both fixed).
+FIXED: static handler served users.json/sessions.json/source publicly (CRITICAL, closed);
+XFF-spoof rate-limit bypass; malformed-JSON socket hang; chat-after-settle free reply;
+double-settle race (settling guard); settled-session PII/blob leak (evict on settle);
+0-reply End stranding; seller 100x display; iOS 100dvh; a11y (live regions, focus-visible,
+forms, XSS via textContent). Tests 15→22. Deferred/documented: no wallet-ownership auth
+(buyerId self-asserted → spend-cap/account gates bypassable, sybil on codes) — testnet-ok,
+must close before BART has value; full UX a11y backlog (keyboard nav on custom controls,
+coral contrast) triaged in review.
+
 ## Mobile gotchas (hard-won 2026-07-06)
 - **iOS WebKit kills the miden-sdk workers** → wallet init dies with the SDK's
   worker-error rehydrator ("Unknown error received from worker", empty payload).

@@ -45,6 +45,9 @@
   .cls .name{font-family:var(--f-disp);text-transform:uppercase;font-size:16px;}
   .cls .desc{font-size:13px;color:var(--muted);margin-top:3px;}
   .cls .right{text-align:right;} .cls .est{font-family:var(--f-mono);font-weight:700;} .cls .eta{font-size:12px;color:var(--muted);}
+  .cls{position:relative;}
+  .cls .pick{flex:0 0 26px;width:26px;height:26px;border:2.5px solid var(--ink);border-radius:7px;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:900;color:transparent;}
+  .cls.sel .pick{background:var(--ink);color:var(--lime);}
   /* matching */
   .matching{text-align:center;padding-top:12vh;}
   .radar{width:80px;height:80px;margin:20px auto 36px;border:var(--bd);background:var(--lime);box-shadow:var(--sh);animation:spin 1.1s steps(8) infinite;}
@@ -311,8 +314,8 @@
         $('balWrap').title=id;
         await refreshAccount();
         await refreshBalance();
-        $('findBtn').textContent='Find a BarŦoker';
         $('findBtn').disabled=false;
+        updateFindLabel();
         // Self-heal: any credits minted but not yet collected, plus any refund
         // note files from settlements this browser missed (died mid-settle),
         // get imported + absorbed in the background on every visit.
@@ -402,16 +405,22 @@
   };
 
   // ---- request screen ----
+  function updateFindLabel(){
+    const b=$('findBtn');
+    if(b.disabled || b.textContent.indexOf('retry')>=0) return; // init/retry states own the label
+    b.textContent='Find a '+TIERS[state.tier].label+' BarŦoker';
+  }
   function renderClasses(){
     $('classes').innerHTML='';
     $('classes').removeAttribute('aria-busy');
     Object.entries(TIERS).forEach(([key,t])=>{
       const div=document.createElement('div');
       div.className='cls'+(state.tier===key?' sel':'');
+      div.setAttribute('role','radio'); div.setAttribute('aria-checked', state.tier===key);
       const perReply=t.estT;
-      div.innerHTML=`<div><div class="name">${t.label}</div><div class="desc">${t.desc}</div></div>
+      div.innerHTML=`<span class="pick">✓</span><div style="flex:1;min-width:0;"><div class="name">${t.label}</div><div class="desc">${t.desc}</div></div>
         <div class="right"><div class="est">${perReply} Ŧ<span style="font-size:11px;color:var(--muted)"> /reply</span></div><div class="eta">${t.eta}</div></div>`;
-      div.onclick=()=>{state.tier=key;renderClasses();};
+      div.onclick=()=>{state.tier=key;renderClasses();updateFindLabel();};
       $('classes').appendChild(div);
     });
   }

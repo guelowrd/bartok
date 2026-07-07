@@ -60,6 +60,7 @@ WorkingDirectory=/opt/bartok/guardian
 Restart=always
 RestartSec=5
 Environment=HOME=/root
+Environment=BARTOK_GUARDIAN_SRC=/opt/bartok-guardian
 Environment=PATH=/root/.cargo/bin:/usr/local/bin:/usr/bin:/bin
 [Install]
 WantedBy=multi-user.target

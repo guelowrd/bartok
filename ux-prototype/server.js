@@ -314,6 +314,10 @@ function rateOk(req, bucket, limit, windowMs) {
   return true;
 }
 
+// Safe body parse: malformed JSON returns null (caller 400s) instead of throwing
+// an unhandled rejection that hangs the socket forever.
+async function readJson(req) { try { return JSON.parse((await readBody(req)) || '{}'); } catch { return null; } }
+
 function json(res, code, obj) {
   res.writeHead(code, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(obj));
@@ -412,7 +416,8 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && req.url === '/api/session/start') {
     if (!rateOk(req, 'start', 20, 60000)) return json(res, 429, { error: 'slow down' });
-    const { buyerId, tier = 'basic', balance = 0 } = JSON.parse(await readBody(req) || '{}');
+    const body = await readJson(req); if (!body) return json(res, 400, { error: 'bad_json' });
+    const { buyerId, tier = 'basic', balance = 0 } = body;
     if (!buyerId) return json(res, 400, { error: 'missing buyerId' });
     if (!TIERS[tier]) return json(res, 400, { error: 'unknown tier' });
     if (TIERS[tier].requiresAccount && !hasAccount(buyerId)) {
@@ -443,7 +448,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && req.url === '/api/session/escrow') {
-    const { sessionId, noteB64 } = JSON.parse(await readBody(req) || '{}');
+    const body = await readJson(req); if (!body) return json(res, 400, { error: 'bad_json' });
+    const { sessionId, noteB64 } = body;
     const s = sessions.get(sessionId);
     if (!s) return json(res, 404, { error: 'unknown session' });
     if (!noteB64) return json(res, 400, { error: 'missing noteB64 (private escrow needs full note details)' });
@@ -485,6 +491,7 @@ const server = http.createServer(async (req, res) => {
         if (spent + result.charge > s.budget) {
           throw new Error('hold_exhausted');
         }
+        if (s.settled) throw new Error('session already settled'); // settled while this reply was in flight — don't give it away free
         s.charges.push(result);
         s.lastActivity = Date.now();
         persistSessions();
@@ -517,15 +524,22 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && req.url === '/api/session/end') {
     const emit = ndjsonHead(res);
+    let guarded = null; // session whose settling flag we must clear in finally
     try {
-      const { sessionId } = JSON.parse(await readBody(req) || '{}');
-      const s = sessions.get(sessionId);
+      const body = await readJson(req);
+      const s = body && sessions.get(body.sessionId);
+      if (!body) throw new Error('bad_json');
       if (!s) throw new Error('unknown session');
       if (!s.escrowNoteB64) throw new Error('session has no escrow');
       if (s.settled) throw new Error('already settled');
+      // ARCH#3: one settle per session at a time — a retry click / dropped-and-
+      // retried request / the hourly sweeper must not double-settle the escrow.
+      if (s.settling) throw new Error('settle_retry'); // already settling; the UI's retry will find it done
+      s.settling = true; guarded = s;
+      s.lastActivity = Date.now(); // so the idle sweeper doesn't pick it up mid-settle
       const charge = s.charges.reduce((a, c) => a + c.charge, 0);
       emit({ type: 'stage', stage: 'settle' });
-      console.log(`[settle] ${sessionId} charge=${charge}`);
+      console.log(`[settle] ${body.sessionId} charge=${charge}`);
       // A failed submit can orphan a Guardian delta on the operator, wedging ALL
       // settlements for ~2 min (one-pending rule + discard window). Ride it out
       // here with backoff instead of bouncing the user between instant failures.
@@ -549,30 +563,33 @@ const server = http.createServer(async (req, res) => {
       if (!settled) {
         throw new Error('settle_retry'); // non-wedge failure or wedge outlasted us; the UI offers a retry
       }
-      s.settled = true;
-      persistSessions();
       recordRefund(s.buyerId, settled.refundNoteFileB64);
       sellerStats.settled += 1;
+      // ARCH#4: settled → evict from memory + snapshot (refund lives in refunds.json;
+      // nothing reads a settled session, and keeping it persisted user prompts/replies).
+      sessions.delete(body.sessionId);
+      persistSessions();
       // João consuming his payment is off Rita's critical path: reconcile it in
       // the background (waits for block inclusion, then proposes+executes).
       if (settled.sellerNoteFileB64) {
-        runMiden('joao_sweep', ['--note-file-b64', settled.sellerNoteFileB64], 300000)
+        runMiden('joao_sweep', ['--note-file-b64', settled.sellerNoteFileB64], 480000)
           .then(r => console.log(`[joao] ${r.code === 0 ? 'consumed' : 'reconcile pending'}`))
           .catch(() => {});
       }
       sellerBroadcast('session_settled', { charge, chargeUsd: usd(charge),
         proposalId: settled.settleProposalId, explorer: settled.explorer });
-      console.log(`[settle] ${sessionId} proposal=${settled.settleProposalId}`);
+      console.log(`[settle] ${body.sessionId} proposal=${settled.settleProposalId}`);
       emit({ type: 'done', charge, refund: settled.refund,
         chargeUsd: usd(charge), refundUsd: usd(settled.refund),
         settleProposalId: settled.settleProposalId,
         sellerNoteId: settled.sellerNoteId, buyerNoteId: settled.buyerNoteId,
         refundNoteFileB64: settled.refundNoteFileB64,
-        joaoProposalId: settled.joaoProposalId,
         links: { operator: settled.explorer } });
     } catch (e) {
-      console.error('[settle] error:', e.message);
+      if (e.message !== 'settle_retry' && e.message !== 'already settled') console.error('[settle] error:', e.message);
       emit({ type: 'done', error: String(e.message || e) });
+    } finally {
+      if (guarded) guarded.settling = false; // released on error/retry; a settled session is already evicted
     }
     res.end();
     return;
@@ -582,7 +599,8 @@ const server = http.createServer(async (req, res) => {
   // details come back as bytes so Rita consumes them via a Guardian proposal.
   if (req.method === 'POST' && req.url === '/api/credits/redeem') {
     if (!rateOk(req, 'redeem', 5, 60000)) return json(res, 429, { error: 'slow down' });
-    const { buyerId, code } = JSON.parse(await readBody(req) || '{}');
+    const body = await readJson(req); if (!body) return json(res, 400, { error: 'bad_json' });
+    const { buyerId, code } = body;
     if (!buyerId) return json(res, 400, { error: 'missing buyerId' });
     // Valid codes: ILOVEBARTOK (the shared one) + ILOVEBARTOK_00 … ILOVEBARTOK_99.
     // Each code is claimable ONCE per wallet (so a wallet can top up ~100x).
@@ -620,7 +638,8 @@ const server = http.createServer(async (req, res) => {
   // Auth-lite: create/login a basic account bound to the wallet id.
   if (req.method === 'POST' && (req.url === '/api/auth/register' || req.url === '/api/auth/login')) {
     if (!rateOk(req, 'auth', 10, 60000)) return json(res, 429, { error: 'slow down' });
-    const { buyerId, name, password } = JSON.parse(await readBody(req) || '{}');
+    const body = await readJson(req); if (!body) return json(res, 400, { error: 'bad_json' });
+    const { buyerId, name, password } = body;
     if (!buyerId || !password) return json(res, 400, { error: 'missing fields' });
     const register = req.url.endsWith('/register');
     if (register) {
@@ -675,10 +694,11 @@ const server = http.createServer(async (req, res) => {
 const SWEEP_IDLE_MS = TESTING ? 50 : 2 * 60 * 60 * 1000; // 2h
 async function sweepAbandonedSessions() {
   for (const [id, s] of sessions) {
-    if (s.settled || !s.escrowNoteB64) continue;
+    if (s.settled || s.settling || !s.escrowNoteB64) continue;
     if (Date.now() - (s.lastActivity || s.createdAt) < SWEEP_IDLE_MS) continue;
     const charge = s.charges.reduce((a, c) => a + c.charge, 0);
     console.log(`[sweep] auto-settling abandoned session ${id} (charge=${charge})`);
+    s.settling = true;
     try {
       const r = await runMiden('settle_session', [
         '--escrow-note-b64', s.escrowNoteB64, '--charge', String(charge),
@@ -688,15 +708,16 @@ async function sweepAbandonedSessions() {
       ], 480000);
       const settled = lastJson(r.out);
       if (r.code === 0 && settled) {
-        s.settled = true;
-        persistSessions();
         recordRefund(s.buyerId, settled.refundNoteFileB64);
+        sessions.delete(id);
+        persistSessions();
         if (settled.sellerNoteFileB64) runMiden('joao_sweep', ['--note-file-b64', settled.sellerNoteFileB64], 300000).catch(() => {});
         console.log(`[sweep] settled ${id}: refund ${settled.refund} recorded for ${s.buyerId}`);
       } else {
         console.error(`[sweep] settle failed for ${id} (will retry next sweep):\n` + r.out.slice(-800));
       }
     } catch (e) { console.error(`[sweep] error for ${id}:`, e.message); }
+    finally { const cur = sessions.get(id); if (cur) cur.settling = false; }
   }
 }
 if (!TESTING) {

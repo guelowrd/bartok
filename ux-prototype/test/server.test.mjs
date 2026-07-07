@@ -122,6 +122,31 @@ test('operator delta wedge: a single end call auto-retries through it and succee
   assert.equal(done.settleProposalId, '0xprop');
 });
 
+test('malformed JSON body returns 400, never hangs the socket', async () => {
+  const r = await fetch(base + '/api/session/start', { method: 'POST', body: '{not json' });
+  assert.equal(r.status, 400);
+  assert.equal((await r.json()).error, 'bad_json');
+});
+
+test('double-settle guard: a second concurrent end call cannot re-settle', async () => {
+  const D = '0x' + '7'.repeat(30);
+  const s = await jpost('/api/session/start', { buyerId: D, tier: 'basic', balance: '10000000' });
+  await jpost('/api/session/escrow', { sessionId: s.sessionId, noteB64: 'bm90ZQ==' });
+  // fire two end calls concurrently; exactly one settles, the other is rejected/no-op
+  const [a, b] = await Promise.all([
+    post('/api/session/end', { sessionId: s.sessionId }).then(r => r.text()),
+    post('/api/session/end', { sessionId: s.sessionId }).then(r => r.text()),
+  ]);
+  const results = [a, b].map(t => JSON.parse(t.trim().split('\n').pop()));
+  const ok = results.filter(r => !r.error);
+  const rejected = results.filter(r => r.error);
+  assert.equal(ok.length, 1, 'exactly one settle succeeds');
+  assert.equal(rejected.length, 1, 'the other is guarded');
+  // the session is evicted after the single successful settle
+  const end3 = JSON.parse((await (await post('/api/session/end', { sessionId: s.sessionId })).text()).trim().split('\n').pop());
+  assert.equal(end3.error, 'unknown session');
+});
+
 test('abandoned sessions: the sweeper auto-settles idle escrowed holds and records the refund', async () => {
   const GHOST = '0x' + '9'.repeat(30);
   const { sweepAbandonedSessions } = require('../server.js');

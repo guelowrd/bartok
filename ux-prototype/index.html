@@ -544,7 +544,7 @@
       if(data.truncated && !state.warnedTrunc){ state.warnedTrunc=true; addRow('ai-sys','(Older messages just slipped out of João’s memory — he keeps the most recent part of the chat.)'); }
       state.spent=data.totalCharge; state.remaining=data.remaining; state.replies++;
       if(state.remaining<100 && !state.holdWarned){ state.holdWarned=true;
-        addRow('ai-sys','That’s this chat’s hold used up. Tap <b>End barter</b> to get your unused BarŦoks back, then start a fresh chat.'); }
+        addRow('ai-sys','That’s this chat’s hold used up. Tap End barter to get your unused BarŦoks back, then start a fresh chat.'); }
     }catch(e){
       const m=e.message;
       let msg='Sorry, something went wrong: '+m;

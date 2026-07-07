@@ -99,7 +99,7 @@
   // Live feed from the BARTOK bridge (server.js SSE). No mock jobs: every row
   // is a real zkTLS-verified reply or a real Miden settlement.
   const $=id=>document.getElementById(id);
-  const units=n=>Number(n).toLocaleString()+' Ŧ';
+  const units=n=>Math.round(Number(n)/100).toLocaleString()+' Ŧ'; // faucet decimals=2: base units → whole Ŧ
   const usd=n=>'$'+n.toFixed(2);
   let earned=0, served=0, settledTotal=0;
 

@@ -291,6 +291,19 @@ function loadUsers() {
 }
 function saveUsers(u) { fs.writeFileSync(USERS_FILE, JSON.stringify(u, null, 2)); }
 const users = loadUsers();
+
+// ---- refund recovery: private refund NoteFiles persisted per buyer so a
+// browser that dies mid-settle can still collect on its next visit.
+const REFUNDS_FILE = TESTING
+  ? path.join(require('os').tmpdir(), `bartok-test-refunds-${process.pid}.json`)
+  : path.join(ROOT, 'ux-prototype', 'refunds.json');
+function loadRefunds() { try { return JSON.parse(fs.readFileSync(REFUNDS_FILE, 'utf8')); } catch { return {}; } }
+function recordRefund(buyerId, noteFileB64) {
+  if (!noteFileB64) return;
+  const r = loadRefunds();
+  r[buyerId] = [...(r[buyerId] || []), noteFileB64].slice(-20);
+  fs.writeFileSync(REFUNDS_FILE, JSON.stringify(r));
+}
 function hasAccount(walletId) { return !!(users[walletId] && users[walletId].hash); }
 function spentBy(walletId) { return (users[walletId] && users[walletId].spent) || 0; }
 function recordSpend(walletId, amount) {
@@ -469,9 +482,11 @@ const server = http.createServer(async (req, res) => {
       ], 480000);
       const settled = lastJson(r.out);
       if (r.code !== 0 || !settled) {
-        throw new Error('settlement failed: ' + r.out.slice(-400));
+        console.error('[settle] full output:\n' + r.out.slice(-4000));
+        throw new Error('settle_retry'); // transient testnet races are common; the UI offers a retry
       }
       s.settled = true;
+      recordRefund(s.buyerId, settled.refundNoteFileB64);
       sellerStats.settled += 1;
       // João consuming his payment is off Rita's critical path: reconcile it in
       // the background (waits for block inclusion, then proposes+executes).
@@ -556,6 +571,13 @@ const server = http.createServer(async (req, res) => {
     const hash = crypto.scryptSync(password, u.salt, 32).toString('hex');
     if (hash !== u.hash) return json(res, 401, { error: 'bad_password' });
     return json(res, 200, { ok: true, name: u.name });
+  }
+
+  // Pending refund note files for a wallet (imported + absorbed on app load).
+  if (req.method === 'GET' && req.url.startsWith('/api/refunds?')) {
+    const id = new URL(req.url, 'http://x').searchParams.get('buyerId') || '';
+    json(res, 200, { files: loadRefunds()[id] || [] });
+    return;
   }
 
   // Whether this wallet has an account (drives the UI gates).

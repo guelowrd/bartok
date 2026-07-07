@@ -313,9 +313,14 @@
         await refreshBalance();
         $('findBtn').textContent='Find a BarŦoker';
         $('findBtn').disabled=false;
-        // Self-heal: any credits minted but not yet collected (page closed or
-        // reloaded mid-redeem) get absorbed in the background on every visit.
-        w.absorbNotes().then(n=>{ if(n>0) refreshBalance(); }).catch(()=>{});
+        // Self-heal: any credits minted but not yet collected, plus any refund
+        // note files from settlements this browser missed (died mid-settle),
+        // get imported + absorbed in the background on every visit.
+        (async()=>{ try{
+          const r=await fetch(api('/api/refunds?buyerId=')+w.id()).then(x=>x.json()).catch(()=>({files:[]}));
+          for(const f of (r.files||[])){ try{ const { NoteFile }=await import("@miden-sdk/miden-sdk"); await w.client.notes.import(NoteFile.deserialize(Uint8Array.from(atob(f),c=>c.charCodeAt(0)))); }catch(_){} }
+          const n=await w.absorbNotes(); if(n>0) refreshBalance();
+        }catch(_){} })();
         return;
       }catch(e){
         console.error('wallet init attempt '+attempt+' failed',e);

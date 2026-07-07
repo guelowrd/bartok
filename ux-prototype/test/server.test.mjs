@@ -91,6 +91,14 @@ test('settlement returns the refund rail fields', async () => {
   assert.equal(typeof done.refundNoteFileB64, 'string');
 });
 
+test('refund recovery: settled refunds are retrievable per buyer', async () => {
+  const s = await jpost('/api/session/start', { buyerId: RITA, tier: 'basic', balance: '10000000' });
+  await jpost('/api/session/escrow', { sessionId: s.sessionId, noteB64: 'bm90ZQ==' });
+  await post('/api/session/end', { sessionId: s.sessionId });
+  const r = await (await fetch(base + `/api/refunds?buyerId=${RITA}`)).json();
+  assert.ok(r.files.includes('cmVmdW5k'), 'stubbed refund file recorded and served');
+});
+
 test('abuse guards: oversized body rejected, redeem rate limit kicks in', async () => {
   const big = await fetch(base + '/api/auth/register', { method: 'POST', body: 'x'.repeat(600 * 1024) })
     .then((r) => r.status).catch(() => 'conn-reset');

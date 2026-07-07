@@ -2,7 +2,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#C9F24A" />
+<meta name="description" content="BARTOK — pay-per-answer AI with cryptographically verified replies." />
+<meta property="og:title" content="BARŦOK" />
+<meta property="og:description" content="Pick a BarŦoker brain, pay only for what you use. Every reply is proven genuine." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='4' y='4' width='56' height='56' rx='10' fill='%23C9F24A' stroke='%2315120C' stroke-width='6'/%3E%3Ctext x='32' y='45' font-size='38' font-family='Arial Black,Arial' font-weight='900' text-anchor='middle' fill='%2315120C'%3E%C5%A6%3C/text%3E%3C/svg%3E" />
 <title>BARTOK</title>
 <link rel="stylesheet" href="bartok.css" />
 <style>
@@ -16,6 +21,7 @@
   .fundbtn{font-family:var(--f-ui);font-weight:700;background:var(--panel);border:2.5px solid var(--ink);border-radius:10px;box-shadow:var(--sh-sm);padding:6px 10px;cursor:pointer;font-size:12px;}
   .fundbtn:active{transform:translate(2px,2px);box-shadow:none;}
   @media (max-width:520px){
+    textarea,input{font-size:16px;} /* iOS zooms into sub-16px inputs */
     .blbl{display:none;}
     .tier-hint{display:none;}
     .price{flex-basis:84px;max-width:84px;font-size:11px;}
@@ -66,7 +72,7 @@
   .price .model{display:block;font-family:var(--f-mono);font-size:10px;color:var(--muted);margin-top:2px;word-break:break-all;}
   .price .boost{display:block;color:var(--cobalt);font-size:11px;font-weight:700;cursor:pointer;margin-top:4px;}
   .bubble .whotag{font-family:var(--f-mono);font-size:10px;font-weight:700;color:var(--cobalt);display:block;margin-bottom:4px;letter-spacing:.06em;}
-  .composer{flex:0 0 auto;border-top:var(--bd);background:var(--panel);padding:12px 18px 16px;}
+  .composer{flex:0 0 auto;border-top:var(--bd);background:var(--panel);padding:12px 18px calc(16px + env(safe-area-inset-bottom));}
   .composer .cinner{max-width:680px;margin:0 auto;display:flex;flex-direction:column;gap:10px;}
   .tier-hint{font-family:var(--f-mono);font-size:12px;color:var(--muted);margin-left:8px;}
   .inputbar{display:flex;gap:10px;align-items:flex-end;}
@@ -116,7 +122,7 @@
     <div class="classes" id="classes" aria-busy="true">
       <div class="loadbox"><div class="radar radar--load"></div><div>getting ready…</div></div>
     </div>
-    <button class="btn btn--block" id="findBtn" disabled>Find a BarŦoker</button>
+    <button class="btn btn--block" id="findBtn" disabled><span class="radar-mini" style="margin-right:8px;"></span>Initializing BarŦok app…</button>
     <p class="sub" id="findNote" style="font-size:12px;margin-top:12px;">We set aside a small hold of BarŦoks when you start a chat. Whatever you don't use comes right back when you finish.</p>
   </div>
 </div>
@@ -197,7 +203,7 @@
   .proof-text{font-size:15px;color:var(--ink);margin-bottom:18px;}
   .v{cursor:pointer;}
 </style>
-<div id="proofModal" class="proof-overlay hidden">
+<div id="proofModal" class="proof-overlay hidden" role="dialog" aria-modal="true" aria-label="Verified reply">
   <div class="proof-card">
     <div class="proof-big">✓</div>
     <div class="proof-h">Verified real</div>
@@ -207,7 +213,7 @@
 </div>
 
 <!-- BUY CREDITS -->
-<div id="buyModal" class="proof-overlay hidden">
+<div id="buyModal" class="proof-overlay hidden" role="dialog" aria-modal="true" aria-label="Top-up">
   <div class="proof-card" style="max-width:420px;text-align:left;">
     <div class="proof-h" style="text-align:center;">Top-up</div>
     <div style="font-size:13px;color:var(--muted);margin-bottom:12px;text-align:center;">100,000 Ŧ = $1. Pay with a card, or use a code.</div>
@@ -228,7 +234,7 @@
 </div>
 
 <!-- ACCOUNT -->
-<div id="authModal" class="proof-overlay hidden">
+<div id="authModal" class="proof-overlay hidden" role="dialog" aria-modal="true" aria-label="Create your account">
   <div class="proof-card" style="max-width:380px;text-align:left;">
     <div class="proof-h" style="text-align:center;">Create your account</div>
     <div id="authWhy" style="font-size:13px;color:var(--muted);margin-bottom:14px;text-align:center;"></div>
@@ -305,6 +311,7 @@
         $('balWrap').title=id;
         await refreshAccount();
         await refreshBalance();
+        $('findBtn').textContent='Find a BarŦoker';
         $('findBtn').disabled=false;
         // Self-heal: any credits minted but not yet collected (page closed or
         // reloaded mid-redeem) get absorbed in the background on every visit.
@@ -343,7 +350,7 @@
   $('fundBtn').onclick=()=>openBuy();
 
   // ---- Buy credits (mock card + discount code) ----
-  function openBuy(){ $('buyModal').classList.remove('hidden'); $('buyMsg').textContent=''; $('codeInput').value=''; }
+  function openBuy(){ $('buyModal').classList.remove('hidden'); $('buyMsg').textContent=''; $('codeInput').value=''; setTimeout(()=>$('codeInput').focus(),50); }
   const buyBusy=m=>{ $('buyMsg').innerHTML='<span class="radar-mini" style="margin-right:8px;"></span>'+m; };
   function closeBuy(){ $('buyModal').classList.add('hidden'); }
   $('buyClose').onclick=closeBuy;
@@ -370,10 +377,11 @@
   };
 
   // ---- Account (auth-lite) ----
-  function openAuth(why){ $('authWhy').textContent=why||''; $('authMsg').textContent=''; $('authModal').classList.remove('hidden'); }
+  function openAuth(why){ $('authWhy').textContent=why||''; $('authMsg').textContent=''; $('authModal').classList.remove('hidden'); setTimeout(()=>$('authName').focus(),50); }
   function closeAuth(){ $('authModal').classList.add('hidden'); }
   $('authClose').onclick=closeAuth;
   $('authModal').onclick=e=>{ if(e.target===$('authModal')) closeAuth(); };
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape') ['buyModal','authModal','proofModal'].forEach(id=>$(id).classList.add('hidden')); });
   $('authGo').onclick=async()=>{
     const name=$('authName').value.trim(), password=$('authPass').value;
     if(!password){ $('authMsg').textContent='Pick a password.'; return; }
@@ -404,6 +412,7 @@
   }
 
   $('findBtn').onclick=async()=>{
+    if($('findBtn').textContent.indexOf('retry')>=0){ location.reload(); return; }
     await walletReady;
     show('matching');
     $('matchTitle').innerHTML='Finding<br>your BarŦoker…';
@@ -424,8 +433,11 @@
       await refreshBalance();
       enterChat();
     }catch(e){
-      alert('Could not start the session: '+e.message);
       show('request');
+      const note=$('findNote'); const orig=note.textContent;
+      note.textContent='Could not start the chat: '+e.message+' — try again.';
+      note.style.color='var(--coral)';
+      setTimeout(()=>{ note.textContent=orig; note.style.color=''; }, 8000);
     }
   };
 
@@ -449,7 +461,7 @@
   input.addEventListener('input',()=>{input.style.height='auto';input.style.height=Math.min(input.scrollHeight,140)+'px';refreshSend();});
   input.addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();if(!$('send').disabled)sendMsg();}});
   $('send').onclick=sendMsg;
-  function refreshSend(){$('send').disabled=state.busy||!input.value.trim()||state.remaining<1000;}
+  function refreshSend(){$('send').disabled=state.busy||!input.value.trim()||state.remaining<100;} // <Ŧ1 left in the hold
   function addRow(kind,text){
     const row=document.createElement('div');
     if(kind==='ai-sys'){row.className='msg-row ai';row.innerHTML='<div class="bubble ai" style="opacity:.85;font-size:13px;"></div>';row.querySelector('.bubble').textContent=text;$('thread').appendChild(row);return row;}

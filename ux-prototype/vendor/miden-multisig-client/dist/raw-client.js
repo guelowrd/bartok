@@ -1,5 +1,5 @@
 import { WasmWebClient, } from '@miden-sdk/miden-sdk';
-export const DEFAULT_MIDEN_RPC_URL = 'https://rpc.devnet.miden.io';
+export const DEFAULT_MIDEN_RPC_URL = 'https://rpc.testnet.miden.io'; // BARTOK: testnet-safe default
 const rawClientCache = new WeakMap();
 export function resolveMidenRpcEndpoint(endpoint) {
     return endpoint ?? DEFAULT_MIDEN_RPC_URL;

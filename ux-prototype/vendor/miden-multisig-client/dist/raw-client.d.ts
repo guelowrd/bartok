@@ -1,5 +1,5 @@
 import { MidenClient, type TransactionProver, type TransactionScript, WasmWebClient } from '@miden-sdk/miden-sdk';
-export declare const DEFAULT_MIDEN_RPC_URL = "https://rpc.devnet.miden.io";
+export declare const DEFAULT_MIDEN_RPC_URL = "https://rpc.testnet.miden.io";
 export type RawClientSource = MidenClient | WasmWebClient;
 export interface ScriptLibrarySource {
     namespace: string;

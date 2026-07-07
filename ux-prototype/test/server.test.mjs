@@ -110,6 +110,18 @@ test('transient settle failure: first end fails with settle_retry, retry on the 
   assert.equal(second.settleProposalId, '0xprop');
 });
 
+test('operator delta wedge: a single end call auto-retries through it and succeeds', async () => {
+  const WEDGY = '0x' + 'e'.repeat(30);   // stub wedges twice, then clears
+  const s = await jpost('/api/session/start', { buyerId: WEDGY, tier: 'basic', balance: '10000000' });
+  await jpost('/api/session/escrow', { sessionId: s.sessionId, noteB64: 'bm90ZQ==' });
+  const lines = (await (await post('/api/session/end', { sessionId: s.sessionId })).text()).trim().split('\n');
+  const stages = lines.slice(0, -1).map((l) => JSON.parse(l).stage);
+  const done = JSON.parse(lines[lines.length - 1]);
+  assert.ok(stages.includes('settle_wait'), 'streams the auto-retry stage');
+  assert.equal(done.error, undefined, 'auto-retry rides out the wedge');
+  assert.equal(done.settleProposalId, '0xprop');
+});
+
 test('UI ships the settle-retry affordance (guards against silent copy regressions)', async () => {
   const fs = await import('node:fs');
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');

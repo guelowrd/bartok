@@ -487,7 +487,8 @@
 
   const shortModel=m=>String(m||'').split('/').pop().replace(/:free$/,'');
   const STAGE_LABELS={answer:'Delivering your question…', thinking:'João is thinking…',
-    received:"Answer's in — sealing the proof…", verify:"Checking it's genuine…", settle:'Wrapping up your chat…'};
+    received:"Answer's in — sealing the proof…", verify:"Checking it's genuine…", settle:'Wrapping up your chat…',
+    settle_wait:'Network is busy — retrying automatically, hang tight…'};
   async function sendMsg(){ const text=input.value.trim(); if(!text) return; input.value=''; input.style.height='auto'; await runMessage(text, state.tier, false); }
 
   // The aha moment: any Basic reply gets an "Ask Genius" boost that re-runs the
@@ -591,13 +592,25 @@
 
   async function settleUp(){
     if(state.settling) return; state.settling=true;
-    $('receiptBody').innerHTML='<div class="rline"><span>Wrapping up…</span><span class="dots"><span></span><span></span><span></span></span></div>'
-      +'<div class="rline" style="color:var(--muted)">Paying João for what you used and returning the rest. ~30-60s.</div>';
+    const setWrap=t=>{$('receiptBody').innerHTML='<div class="rline"><span id="wrapStage">'+t+'</span><span class="radar-trio"><span></span><span></span><span></span></span></div>'
+      +'<div class="rline" style="color:var(--muted)">Paying João for what you used and returning the rest. Usually under a minute; a busy network can add a few.</div>';};
+    setWrap('Wrapping up…');
     show('receipt');
     try{
       const r=await fetch(api('/api/session/end'),{method:'POST',body:JSON.stringify({sessionId:state.sessionId})});
-      const lines=(await r.text()).trim().split('\n');
-      const data=JSON.parse(lines[lines.length-1]);
+      const reader=r.body.getReader(); const dec=new TextDecoder();
+      let buf='', data=null;
+      while(true){
+        const {done,value}=await reader.read(); if(done) break;
+        buf+=dec.decode(value,{stream:true});
+        let nl; while((nl=buf.indexOf('\n'))>=0){
+          const line=buf.slice(0,nl).trim(); buf=buf.slice(nl+1); if(!line) continue;
+          const evt=JSON.parse(line);
+          if(evt.type==='stage'){ const el=document.getElementById('wrapStage'); if(el) el.textContent=STAGE_LABELS[evt.stage]||'Wrapping up…'; }
+          else if(evt.type==='done') data=evt;
+        }
+      }
+      if(!data) throw new Error('settle_retry');
       if(data.error) throw new Error(data.error);
       const ratedLine = state.rating? ('★'.repeat(state.rating)+(state.tags.length?(' · '+state.tags.join(', ')):'')) : 'not rated';
       $('receiptBody').innerHTML=

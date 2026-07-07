@@ -139,6 +139,11 @@ const TEST_STUBS = {
     // succeed on retry — mirrors the transient testnet races we see live.
     const buyer = args[args.indexOf('--buyer') + 1] || '';
     if (buyer.endsWith('ff') && !TEST_STUBS._failedOnce) { TEST_STUBS._failedOnce = true; return { code: 1, out: 'stub transient failure' }; }
+    // buyer ending 'ee': simulate the operator delta wedge clearing after 2 attempts
+    if (buyer.endsWith('ee')) {
+      TEST_STUBS._wedges = (TEST_STUBS._wedges || 0) + 1;
+      if (TEST_STUBS._wedges <= 2) return { code: 1, out: 'Cannot push new delta: there is already a non-canonical delta pending' };
+    }
     return JSON.stringify({ charge: 42, refund: 458, settleProposalId: '0xprop',
       sellerNoteId: '0xsn', buyerNoteId: '0xbn', refundNoteFileB64: 'cmVmdW5k',
       sellerNoteFileB64: null, explorer: 'https://example.test/acct' });
@@ -501,16 +506,28 @@ const server = http.createServer(async (req, res) => {
       const charge = s.charges.reduce((a, c) => a + c.charge, 0);
       emit({ type: 'stage', stage: 'settle' });
       console.log(`[settle] ${sessionId} charge=${charge}`);
-      const r = await runMiden('settle_session', [
-        '--escrow-note-b64', s.escrowNoteB64, '--charge', String(charge),
-        '--buyer', s.buyerId,
-        '--seller-serial', s.params.sellerSerial.join(','),
-        '--buyer-serial', s.params.buyerSerial.join(','),
-      ], 480000);
-      const settled = lastJson(r.out);
-      if (r.code !== 0 || !settled) {
-        console.error('[settle] full output:\n' + r.out.slice(-4000));
-        throw new Error('settle_retry'); // transient testnet races are common; the UI offers a retry
+      // A failed submit can orphan a Guardian delta on the operator, wedging ALL
+      // settlements for ~2 min (one-pending rule + discard window). Ride it out
+      // here with backoff instead of bouncing the user between instant failures.
+      const RETRY_MS = TESTING ? 50 : 35000;
+      let r, settled;
+      for (let attempt = 1; attempt <= 6; attempt++) {
+        r = await runMiden('settle_session', [
+          '--escrow-note-b64', s.escrowNoteB64, '--charge', String(charge),
+          '--buyer', s.buyerId,
+          '--seller-serial', s.params.sellerSerial.join(','),
+          '--buyer-serial', s.params.buyerSerial.join(','),
+        ], 480000);
+        settled = lastJson(r.out);
+        if (r.code === 0 && settled) break;
+        const wedged = /non-canonical delta pending/.test(r.out);
+        console.error(`[settle] attempt ${attempt} failed${wedged ? ' (operator delta wedge)' : ''}:\n` + r.out.slice(-1500));
+        if (!wedged || attempt === 6) { settled = null; break; }
+        emit({ type: 'stage', stage: 'settle_wait' });
+        await new Promise((res2) => setTimeout(res2, RETRY_MS));
+      }
+      if (!settled) {
+        throw new Error('settle_retry'); // non-wedge failure or wedge outlasted us; the UI offers a retry
       }
       s.settled = true;
       recordRefund(s.buyerId, settled.refundNoteFileB64);

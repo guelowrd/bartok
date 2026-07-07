@@ -90,10 +90,22 @@ const TIERS = {
   },
 };
 
-// ponytail: sessions are in-memory only — a server restart loses session state.
-// Funds are safe (the escrow note stays consumable on-chain by the operator);
-// upgrade path is a JSON snapshot file.
+// Sessions persist to a JSON snapshot so a bridge crash/restart can never
+// strand an escrowed hold: unsettled sessions reload at boot, and the sweeper
+// below auto-settles abandoned ones (refunding the unused hold).
+const SESSIONS_FILE = process.env.BARTOK_TEST === '1'
+  ? require('path').join(require('os').tmpdir(), `bartok-test-sessions-${process.pid}.json`)
+  : require('path').join(__dirname, 'sessions.json');
 const sessions = new Map();
+try {
+  for (const [k, v] of Object.entries(JSON.parse(require('fs').readFileSync(SESSIONS_FILE, 'utf8')))) {
+    if (!v.settled) sessions.set(k, v);
+  }
+  if (sessions.size) console.log(`[sessions] restored ${sessions.size} unsettled session(s) from snapshot`);
+} catch (_) {}
+function persistSessions() {
+  try { require('fs').writeFileSync(SESSIONS_FILE, JSON.stringify(Object.fromEntries(sessions))); } catch (e) { console.error('[sessions] persist failed:', e.message); }
+}
 
 // ---- seller (João) SSE feed -------------------------------------------------
 const sellerClients = new Set();
@@ -418,7 +430,8 @@ const server = http.createServer(async (req, res) => {
     if (!params) return json(res, 500, { error: 'build_escrow failed', detail: p.out.slice(-400) });
     const sessionId = crypto.randomUUID();
     sessions.set(sessionId, { buyerId, tier, params, budget, escrowNoteB64: null,
-      charges: [], settled: false, createdAt: Date.now() });
+      charges: [], settled: false, createdAt: Date.now(), lastActivity: Date.now() });
+    persistSessions();
     console.log(`[session] ${sessionId} buyer=${buyerId} tier=${tier} hold=${budget}`);
     json(res, 200, { sessionId, escrowTemplate: {
       requestB64: params.requestB64, noteB64: params.noteB64,
@@ -433,6 +446,8 @@ const server = http.createServer(async (req, res) => {
     if (!s) return json(res, 404, { error: 'unknown session' });
     if (!noteB64) return json(res, 400, { error: 'missing noteB64 (private escrow needs full note details)' });
     s.escrowNoteB64 = noteB64;
+    s.lastActivity = Date.now();
+    persistSessions();
     console.log(`[session] ${sessionId} escrow registered`);
     json(res, 200, { ok: true, budget: s.budget });
     return;
@@ -468,6 +483,8 @@ const server = http.createServer(async (req, res) => {
           throw new Error('hold_exhausted');
         }
         s.charges.push(result);
+        s.lastActivity = Date.now();
+        persistSessions();
         // Memory rides inside the notarized request (4 KiB send cap → ~2.4 KB of
         // history). Replies dominate the bytes, so store a trimmed version:
         // ~3x more turns remembered for the same budget.
@@ -530,6 +547,7 @@ const server = http.createServer(async (req, res) => {
         throw new Error('settle_retry'); // non-wedge failure or wedge outlasted us; the UI offers a retry
       }
       s.settled = true;
+      persistSessions();
       recordRefund(s.buyerId, settled.refundNoteFileB64);
       sellerStats.settled += 1;
       // João consuming his payment is off Rita's critical path: reconcile it in
@@ -646,6 +664,42 @@ const server = http.createServer(async (req, res) => {
   res.end(fs.readFileSync(file));
 });
 
+// ---- abandoned-session sweeper: a real user who closes the tab mid-chat must
+// never leave a hold stranded. Any unsettled session with an escrow and no
+// activity for SWEEP_IDLE_MS gets auto-settled (charges kept, rest refunded,
+// refund recorded for the wallet's next visit). Runs at boot + hourly.
+const SWEEP_IDLE_MS = TESTING ? 50 : 2 * 60 * 60 * 1000; // 2h
+async function sweepAbandonedSessions() {
+  for (const [id, s] of sessions) {
+    if (s.settled || !s.escrowNoteB64) continue;
+    if (Date.now() - (s.lastActivity || s.createdAt) < SWEEP_IDLE_MS) continue;
+    const charge = s.charges.reduce((a, c) => a + c.charge, 0);
+    console.log(`[sweep] auto-settling abandoned session ${id} (charge=${charge})`);
+    try {
+      const r = await runMiden('settle_session', [
+        '--escrow-note-b64', s.escrowNoteB64, '--charge', String(charge),
+        '--buyer', s.buyerId,
+        '--seller-serial', s.params.sellerSerial.join(','),
+        '--buyer-serial', s.params.buyerSerial.join(','),
+      ], 480000);
+      const settled = lastJson(r.out);
+      if (r.code === 0 && settled) {
+        s.settled = true;
+        persistSessions();
+        recordRefund(s.buyerId, settled.refundNoteFileB64);
+        if (settled.sellerNoteFileB64) runMiden('joao_sweep', ['--note-file-b64', settled.sellerNoteFileB64], 300000).catch(() => {});
+        console.log(`[sweep] settled ${id}: refund ${settled.refund} recorded for ${s.buyerId}`);
+      } else {
+        console.error(`[sweep] settle failed for ${id} (will retry next sweep):\n` + r.out.slice(-800));
+      }
+    } catch (e) { console.error(`[sweep] error for ${id}:`, e.message); }
+  }
+}
+if (!TESTING) {
+  setTimeout(sweepAbandonedSessions, 60 * 1000);           // shortly after boot
+  setInterval(sweepAbandonedSessions, 60 * 60 * 1000);      // hourly
+}
+
 // Warm the release builds once at startup so the first message isn't a cold compile.
 function warm() {
   if (TESTING) return;
@@ -661,7 +715,7 @@ function warm() {
   }
 }
 
-module.exports = { server, CONFIG, TIERS };
+module.exports = { server, CONFIG, TIERS, sweepAbandonedSessions };
 
 if (require.main === module) {
   const PORT = process.env.PORT || 8787;

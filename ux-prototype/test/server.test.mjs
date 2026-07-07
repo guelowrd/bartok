@@ -122,6 +122,31 @@ test('operator delta wedge: a single end call auto-retries through it and succee
   assert.equal(done.settleProposalId, '0xprop');
 });
 
+test('abandoned sessions: the sweeper auto-settles idle escrowed holds and records the refund', async () => {
+  const GHOST = '0x' + '9'.repeat(30);
+  const { sweepAbandonedSessions } = require('../server.js');
+  const s = await jpost('/api/session/start', { buyerId: GHOST, tier: 'basic', balance: '10000000' });
+  await jpost('/api/session/escrow', { sessionId: s.sessionId, noteB64: 'bm90ZQ==' });
+  await new Promise((r) => setTimeout(r, 80));            // exceed the test idle threshold (50ms)
+  await sweepAbandonedSessions();
+  const r = await (await fetch(base + `/api/refunds?buyerId=${GHOST}`)).json();
+  assert.ok(r.files.length >= 1, 'sweeper settled the ghost session and recorded its refund');
+  // idempotent: a second sweep must not double-settle
+  const before = r.files.length;
+  await sweepAbandonedSessions();
+  const again = await (await fetch(base + `/api/refunds?buyerId=${GHOST}`)).json();
+  assert.equal(again.files.length, before, 'settled sessions are not re-swept');
+});
+
+test('sessions persist to the snapshot file (crash-restart safety)', async () => {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const files = fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith(`bartok-test-sessions-${process.pid}`));
+  assert.equal(files.length, 1, 'sessions snapshot file exists');
+  const snap = JSON.parse(fs.readFileSync(`${os.tmpdir()}/${files[0]}`, 'utf8'));
+  assert.ok(Object.keys(snap).length >= 1, 'snapshot contains sessions');
+});
+
 test('UI ships the settle-retry affordance (guards against silent copy regressions)', async () => {
   const fs = await import('node:fs');
   const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');

@@ -21,6 +21,16 @@ export GUARDIAN_NETWORK_TYPE="${GUARDIAN_NETWORK_TYPE:-MidenTestnet}"
 export GUARDIAN_HTTP_PORT="${GUARDIAN_HTTP_PORT:-3300}"
 export GUARDIAN_GRPC_PORT="${GUARDIAN_GRPC_PORT:-50052}"
 
+# Take over: a stale Guardian (e.g. from a previous serve.sh) must not block us.
+for port in "$GUARDIAN_HTTP_PORT" "$GUARDIAN_GRPC_PORT"; do
+  pids=$(lsof -ti :"$port" 2>/dev/null || true)
+  if [ -n "$pids" ]; then
+    echo "stopping previous listener on :$port (pid $pids)"
+    kill $pids 2>/dev/null || true
+  fi
+done
+sleep 1
+
 mkdir -p "$DIR/data" "$DIR/keys"
 
 if [ "${1:-}" = "keygen" ]; then

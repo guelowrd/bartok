@@ -19,5 +19,8 @@
   },
   "overrides": {
     "@miden-sdk/miden-sdk": "0.15.3"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

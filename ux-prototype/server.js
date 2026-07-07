@@ -22,6 +22,10 @@ const crypto = require('crypto');
 // HTTP surface be integration-tested with plain `node --test` (zero deps).
 const TESTING = process.env.BARTOK_TEST === '1';
 
+// A stray async failure must not take the whole backend down mid-demo.
+process.on('unhandledRejection', (e) => console.error('[unhandled rejection]', e));
+process.on('uncaughtException', (e) => console.error('[uncaught exception]', e));
+
 const STATIC = __dirname;
 const ROOT = path.resolve(__dirname, '..');
 const TLSN = path.join(ROOT, 'zktls-spike', 'tlsn');
@@ -432,7 +436,7 @@ const server = http.createServer(async (req, res) => {
       busy = true;
       try {
         const spent = s.charges.reduce((a, c) => a + c.charge, 0);
-        console.log(`[chat] tier=${msgTier} "${prompt.slice(0, 60)}"`);
+        console.log(`[chat] tier=${msgTier} prompt_len=${prompt.length}`); // prompts are user data — never logged
         sellerBroadcast('job_started', { tier: msgTier, model: TIERS[msgTier].models[0] });
         s.history = s.history || [];
         const result = await runAnswer(prompt, msgTier, s.history, stage => emit({ type: 'stage', stage }));
@@ -568,8 +572,9 @@ const server = http.createServer(async (req, res) => {
     }
     const u = users[buyerId];
     if (!u || !u.hash) return json(res, 401, { error: 'no_account' });
-    const hash = crypto.scryptSync(password, u.salt, 32).toString('hex');
-    if (hash !== u.hash) return json(res, 401, { error: 'bad_password' });
+    const hash = crypto.scryptSync(password, u.salt, 32);
+    const ok = crypto.timingSafeEqual(hash, Buffer.from(u.hash, 'hex'));
+    if (!ok) return json(res, 401, { error: 'bad_password' });
     return json(res, 200, { ok: true, name: u.name });
   }
 

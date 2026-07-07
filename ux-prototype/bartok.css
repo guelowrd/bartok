@@ -75,3 +75,7 @@ input:focus,textarea:focus,select:focus{outline:none;box-shadow:var(--sh-sm);}
 ::-webkit-scrollbar{width:12px;height:12px;}
 ::-webkit-scrollbar-thumb{background:var(--ink);border:3px solid var(--paper);border-radius:10px;}
 .muted{color:var(--muted);}
+
+/* Visible keyboard focus for all interactive elements (a11y). */
+:focus-visible{outline:3px solid var(--cobalt);outline-offset:2px;border-radius:4px;}
+input:focus-visible,textarea:focus-visible{outline:3px solid var(--cobalt);outline-offset:1px;}

@@ -133,7 +133,7 @@
   <div class="inner matching">
     <div class="radar"></div>
     <h1 style="margin-top:6px;" id="matchTitle">Finding<br>your BarŦoker…</h1>
-    <p class="sub" id="matchSub">Comparing verified BarŦokers by price and rating.</p>
+    <p class="sub" id="matchSub" role="status" aria-live="polite">Comparing verified BarŦokers by price and rating.</p>
   </div>
 </div>
 
@@ -148,7 +148,7 @@
       </div>
     </div>
   </div>
-  <div class="chat" id="chat"><div class="inner" id="thread"></div></div>
+  <div class="chat" id="chat"><div class="inner" id="thread" role="log" aria-live="polite" aria-relevant="additions text"></div></div>
   <div class="composer">
     <div class="cinner">
       <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;">
@@ -226,10 +226,10 @@
     <button class="btn btn--block" disabled style="opacity:.5;margin-bottom:14px;">Card payments coming soon</button>
     <div class="label" style="margin:6px 0;">or redeem a code</div>
     <div style="display:flex;gap:8px;">
-      <input id="codeInput" placeholder="Discount code" style="flex:1;box-sizing:border-box;min-width:0;padding:10px;border:2.5px solid var(--ink);border-radius:8px;text-transform:uppercase;">
+      <input id="codeInput" placeholder="Discount code" aria-label="Discount code" autocomplete="off" autocapitalize="characters" enterkeyhint="go" style="flex:1;box-sizing:border-box;min-width:0;padding:10px;border:2.5px solid var(--ink);border-radius:8px;text-transform:uppercase;">
       <button class="btn" id="redeemBtn">Redeem</button>
     </div>
-    <div id="buyMsg" style="min-height:20px;font-size:13px;margin-top:10px;text-align:center;color:var(--cobalt);"></div>
+    <div id="buyMsg" role="status" aria-live="polite" style="min-height:20px;font-size:13px;margin-top:10px;text-align:center;color:var(--cobalt);"></div>
     <button class="btn btn--ghost btn--block" id="buyClose" style="margin-top:6px;">Close</button>
   </div>
 </div>
@@ -239,9 +239,9 @@
   <div class="proof-card" style="max-width:380px;text-align:left;">
     <div class="proof-h" style="text-align:center;">Create your account</div>
     <div id="authWhy" style="font-size:13px;color:var(--muted);margin-bottom:14px;text-align:center;"></div>
-    <input id="authName" placeholder="Your name" style="width:100%;padding:10px;border:2.5px solid var(--ink);border-radius:8px;margin-bottom:8px;box-sizing:border-box;">
-    <input id="authPass" type="password" placeholder="Password" style="width:100%;padding:10px;border:2.5px solid var(--ink);border-radius:8px;margin-bottom:8px;box-sizing:border-box;">
-    <div id="authMsg" style="min-height:20px;font-size:13px;margin:4px 0;text-align:center;color:var(--coral);"></div>
+    <input id="authName" placeholder="Your name" aria-label="Your name" autocomplete="nickname" style="width:100%;padding:10px;border:2.5px solid var(--ink);border-radius:8px;margin-bottom:8px;box-sizing:border-box;">
+    <input id="authPass" type="password" placeholder="Password (min 6 characters)" aria-label="Password" autocomplete="new-password" enterkeyhint="go" style="width:100%;padding:10px;border:2.5px solid var(--ink);border-radius:8px;margin-bottom:8px;box-sizing:border-box;">
+    <div id="authMsg" role="alert" aria-live="assertive" style="min-height:20px;font-size:13px;margin:4px 0;text-align:center;color:var(--coral);"></div>
     <button class="btn btn--block" id="authGo">Create account</button>
     <button class="btn btn--ghost btn--block" id="authClose" style="margin-top:6px;">Not now</button>
   </div>
@@ -361,6 +361,8 @@
   function closeBuy(){ $('buyModal').classList.add('hidden'); }
   $('buyClose').onclick=closeBuy;
   $('buyModal').onclick=e=>{ if(e.target===$('buyModal')) closeBuy(); };
+  $('codeInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('redeemBtn').click();});
+  $('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')$('authGo').click();});
   $('redeemBtn').onclick=async()=>{
     const code=$('codeInput').value.trim();
     if(!code){ $('buyMsg').textContent='Enter your code.'; return; }
@@ -390,7 +392,7 @@
   document.addEventListener('keydown',e=>{ if(e.key==='Escape') ['buyModal','authModal','proofModal'].forEach(id=>$(id).classList.add('hidden')); });
   $('authGo').onclick=async()=>{
     const name=$('authName').value.trim(), password=$('authPass').value;
-    if(!password){ $('authMsg').textContent='Pick a password.'; return; }
+    if(!password || password.length<6){ $('authMsg').textContent='Password needs at least 6 characters.'; return; }
     await walletReady;
     $('authGo').disabled=true; $('authMsg').textContent='Creating…';
     try{
@@ -531,7 +533,8 @@
       const amt=Number(data.charge)<100?'<1 Ŧ':('&minus;'+units(data.charge));
       ai._price.innerHTML='<span class="amt">'+amt+' <span style="color:var(--muted)">≈'+usd(data.charge)+'</span></span>'
         +'<span class="v" title="Tap: what does verified mean?">✓ verified</span>'
-        +'<span class="model" title="'+data.model+'">'+shortModel(data.model)+'</span>';
+        +'<span class="model"></span>';
+      const mEl=ai._price.querySelector('.model'); mEl.textContent=shortModel(data.model); mEl.title=data.model;
       ai._price.querySelector('.v').onclick=()=>openProof(data.model,data.tokens,data.charge);
       if(tier==='basic'){
         const boost=document.createElement('span');

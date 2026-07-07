@@ -36,3 +36,4 @@ ux-prototype/users.json
 guardian/*.log
 guardian/.tunnel-domain
 ux-prototype/refunds.json
+guardian/bridge.log

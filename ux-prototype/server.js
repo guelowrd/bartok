@@ -26,6 +26,16 @@ const TESTING = process.env.BARTOK_TEST === '1';
 process.on('unhandledRejection', (e) => console.error('[unhandled rejection]', e));
 process.on('uncaughtException', (e) => console.error('[uncaught exception]', e));
 
+// Mirror all bridge output to a logfile — however the bridge is launched
+// (operator terminal, nohup, serve.sh), the log survives for diagnosis.
+if (!TESTING) {
+  const logStream = fs.createWriteStream(path.join(__dirname, '..', 'guardian', 'bridge.log'), { flags: 'a' });
+  for (const m of ['log', 'error']) {
+    const orig = console[m].bind(console);
+    console[m] = (...a) => { orig(...a); try { logStream.write(a.map(String).join(' ') + '\n'); } catch (_) {} };
+  }
+}
+
 const STATIC = __dirname;
 const ROOT = path.resolve(__dirname, '..');
 const TLSN = path.join(ROOT, 'zktls-spike', 'tlsn');
@@ -124,13 +134,22 @@ const TEST_STUBS = {
     sellerSerial: ['1','2','3','4'], buyerRecipient: ['5','6','7','8'], buyerTag: 2,
     buyerSerial: ['5','6','7','8'], noteType: '0', requestB64: 'cmVx', noteB64: 'bm90ZQ==' }),
   fund_buyer: () => JSON.stringify({ txId: '0xtesttx', explorer: 'https://example.test/tx' }),
-  settle_session: () => JSON.stringify({ charge: 42, refund: 458, settleProposalId: '0xprop',
-    sellerNoteId: '0xsn', buyerNoteId: '0xbn', refundNoteFileB64: 'cmVmdW5k',
-    sellerNoteFileB64: null, explorer: 'https://example.test/acct' }),
+  settle_session: (args) => {
+    // sessions whose buyer id ends in 'ff' fail the FIRST settle (exit 1),
+    // succeed on retry — mirrors the transient testnet races we see live.
+    const buyer = args[args.indexOf('--buyer') + 1] || '';
+    if (buyer.endsWith('ff') && !TEST_STUBS._failedOnce) { TEST_STUBS._failedOnce = true; return { code: 1, out: 'stub transient failure' }; }
+    return JSON.stringify({ charge: 42, refund: 458, settleProposalId: '0xprop',
+      sellerNoteId: '0xsn', buyerNoteId: '0xbn', refundNoteFileB64: 'cmVmdW5k',
+      sellerNoteFileB64: null, explorer: 'https://example.test/acct' });
+  },
   joao_sweep: () => JSON.stringify({ ok: true }),
 };
 function runMiden(bin, args, timeout) {
-  if (TESTING) return Promise.resolve({ code: 0, out: TEST_STUBS[bin] ? TEST_STUBS[bin]() : '{}' });
+  if (TESTING) {
+    const r = TEST_STUBS[bin] ? TEST_STUBS[bin](args) : '{}';
+    return Promise.resolve(typeof r === 'string' ? { code: 0, out: r } : r);
+  }
   const next = midenQueue.then(() => run(path.join(MIDEN_BIN, bin), args, MIDEN_INT, process.env, timeout));
   midenQueue = next.catch(() => {});
   return next;

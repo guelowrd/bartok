@@ -99,6 +99,25 @@ test('refund recovery: settled refunds are retrievable per buyer', async () => {
   assert.ok(r.files.includes('cmVmdW5k'), 'stubbed refund file recorded and served');
 });
 
+test('transient settle failure: first end fails with settle_retry, retry on the same session succeeds', async () => {
+  const FLAKY = '0x' + 'd'.repeat(28) + 'ff';   // triggers one stubbed transient failure
+  const s = await jpost('/api/session/start', { buyerId: FLAKY, tier: 'basic', balance: '10000000' });
+  await jpost('/api/session/escrow', { sessionId: s.sessionId, noteB64: 'bm90ZQ==' });
+  const first = JSON.parse((await (await post('/api/session/end', { sessionId: s.sessionId })).text()).trim().split('\n').pop());
+  assert.equal(first.error, 'settle_retry');
+  const second = JSON.parse((await (await post('/api/session/end', { sessionId: s.sessionId })).text()).trim().split('\n').pop());
+  assert.equal(second.error, undefined, 'retry must succeed (session must stay retryable)');
+  assert.equal(second.settleProposalId, '0xprop');
+});
+
+test('UI ships the settle-retry affordance (guards against silent copy regressions)', async () => {
+  const fs = await import('node:fs');
+  const html = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /retrySettle/, 'Try-again button missing from index.html');
+  assert.match(html, /Not wrapped up yet/, 'friendly settle-failure copy missing');
+  assert.match(html, /settle_retry/, 'settle_retry error mapping missing');
+});
+
 test('abuse guards: oversized body rejected, redeem rate limit kicks in', async () => {
   const big = await fetch(base + '/api/auth/register', { method: 'POST', body: 'x'.repeat(600 * 1024) })
     .then((r) => r.status).catch(() => 'conn-reset');

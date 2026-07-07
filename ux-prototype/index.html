@@ -620,8 +620,13 @@
         }catch(e){ console.error('refund absorb',e); }
       })();
     }catch(e){
-      $('receiptBody').innerHTML='<div class="rline"><span>Settlement failed</span><span>'+e.message+'</span></div>'
-        +'<div class="rline" style="color:var(--muted)">Your BarŦoks are safe and can be recovered.</div>';
+      const friendly = e.message==='settle_retry'
+        ? 'The network hiccuped while wrapping up — this happens sometimes and your BarŦoks are safe.'
+        : 'Something went wrong wrapping up — your BarŦoks are safe. ('+e.message+')';
+      $('receiptBody').innerHTML='<div class="rline" style="color:var(--coral)"><span>Not wrapped up yet</span></div>'
+        +'<div class="rline" style="font-size:13px;">'+friendly+'</div>'
+        +'<div class="rline"><button class="btn" id="retrySettle" style="width:100%;margin-top:8px;">Try again</button></div>';
+      const rb=document.getElementById('retrySettle'); if(rb) rb.onclick=()=>settleUp();
     }
     state.settling=false;
   }

@@ -12,7 +12,7 @@
   .status-txt{font-family:var(--f-disp);text-transform:uppercase;font-size:14px;color:#fff;}
   .toggle{width:62px;height:34px;border:3px solid var(--ink);background:#fff;border-radius:999px;position:relative;cursor:pointer;box-shadow:var(--sh-sm);}
   .toggle.on{background:var(--lime);}
-  .toggle .knob{position:absolute;top:3px;left:3px;width:24px;height:24px;background:var(--ink);border-radius:6px;transition:left .15s;}
+  .toggle .knob{position:absolute;top:3px;left:3px;width:24px;height:24px;background:var(--ink);border-radius:50%;transition:left .15s;}
   .toggle.on .knob{left:31px;}
   .wrap{max-width:780px;margin:0 auto;padding:24px 20px 90px;}
   .toprow{display:flex;gap:16px;align-items:stretch;margin-bottom:8px;flex-wrap:wrap;}
@@ -31,7 +31,7 @@
   .rate input{width:76px;text-align:right;padding:7px;}
   .compete{font-family:var(--f-ui);font-size:11px;color:var(--good);font-weight:700;}
   .sw{width:48px;height:28px;border:3px solid var(--ink);background:#fff;border-radius:999px;position:relative;cursor:pointer;flex:0 0 auto;}
-  .sw.on{background:var(--lime);} .sw .knob{position:absolute;top:2px;left:2px;width:20px;height:20px;background:var(--ink);border-radius:5px;transition:left .15s;} .sw.on .knob{left:22px;}
+  .sw.on{background:var(--lime);} .sw .knob{position:absolute;top:2px;left:2px;width:20px;height:20px;background:var(--ink);border-radius:50%;transition:left .15s;} .sw.on .knob{left:22px;}
   .feed{max-height:300px;overflow-y:auto;}
   .job{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:2.5px solid var(--ink);font-size:14px;}
   .job:last-child{border-bottom:none;}
@@ -40,11 +40,13 @@
   .job .v{color:var(--good);font-size:11px;margin-left:8px;font-weight:700;}
   .earnrow{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
   .earnrow b{font-family:var(--f-mono);font-size:20px;}
+  .fn{color:rgba(255,255,255,.85);}
+  .footnotes{margin:26px auto 18px;max-width:880px;padding:0 20px;font-family:var(--f-mono);font-size:10.5px;color:var(--muted);text-align:center;opacity:.85;}
 </style>
 </head>
 <body>
 <header>
-  <div><a class="brand" href="index.html">BAR<span class="hl">Ŧ</span>OK</a><span class="role">Seller</span></div>
+  <div style="display:flex;align-items:center;"><a class="brand" href="index.html">BAR<span class="hl">Ŧ</span>OK</a><span class="role">Seller<sup class="fn">*</sup></span></div>
   <div class="online">
     <span class="status-txt" id="statusTxt">Offline</span>
     <div class="toggle" id="toggle"><div class="knob"></div></div>
@@ -144,5 +146,6 @@
     renderStats();
   });
 </script>
+<p class="footnotes">* this dashboard is a live read-only feed (real jobs, earnings and settlements stream in) — the controls and payout actions are not functional yet</p>
 </body>
 </html>

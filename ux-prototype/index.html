@@ -11,7 +11,7 @@
 <title>BARTOK</title>
 <link rel="stylesheet" href="bartok.css" />
 <style>
-  html,body{height:100%;} body{display:flex;flex-direction:column;height:100vh;}
+  html,body{height:100%;} body{display:flex;flex-direction:column;height:100vh;height:100dvh;}
   header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 18px;border-bottom:var(--bd);background:var(--lime);flex:0 0 auto;}
   .hdr-right{display:flex;align-items:center;gap:16px;}
   .earn-link{font-family:var(--f-mono);font-size:12px;font-weight:700;color:var(--ink);opacity:.55;text-decoration:none;border-bottom:2px dashed var(--ink);white-space:nowrap;}
@@ -56,7 +56,7 @@
   .loadbox{display:flex;flex-direction:column;align-items:center;gap:12px;padding:30px 0 26px;color:var(--muted);font-family:var(--f-mono);font-size:12px;letter-spacing:.06em;text-transform:uppercase;}
   .btn:disabled{opacity:.55;cursor:default;box-shadow:var(--sh-sm);transform:none;}
   @keyframes spin{to{transform:rotate(360deg);}}
-  @media (prefers-reduced-motion:reduce){.radar,.radar-mini{animation-duration:2.6s;}}
+  @media (prefers-reduced-motion:reduce){.radar,.radar-mini,.radar-trio span{animation-duration:2.6s;}}
   /* driver card */
   .driver{display:flex;align-items:center;gap:14px;background:var(--panel);border:var(--bd);border-radius:var(--r);box-shadow:var(--sh);padding:16px;}
   .avatar{width:56px;height:56px;border:var(--bd);border-radius:14px;background:var(--lime);display:flex;align-items:center;justify-content:center;font-size:28px;flex:0 0 auto;box-shadow:var(--sh-sm);}
@@ -80,8 +80,6 @@
   .tier-hint{font-family:var(--f-mono);font-size:12px;color:var(--muted);margin-left:8px;}
   .inputbar{display:flex;gap:10px;align-items:flex-end;}
   textarea{flex:1;resize:none;max-height:140px;min-height:50px;} .send{flex:0 0 auto;}
-  .dots span{display:inline-block;width:7px;height:7px;margin:0 1px;background:var(--ink);animation:b 1.2s infinite;}
-  .dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}@keyframes b{0%,60%,100%{opacity:.25}30%{opacity:1}}
   .radar-trio{display:inline-flex;gap:6px;margin-left:10px;vertical-align:-2px;}
   .radar-trio span{width:13px;height:13px;border:2.5px solid var(--ink);background:var(--lime);animation:spin 1.1s steps(8) infinite;}
   .radar-trio span:nth-child(2){animation-delay:.18s;background:var(--coral);}
@@ -111,7 +109,7 @@
 <header>
   <a class="brand" href="index.html">BAR<span class="hl">Ŧ</span>OK</a>
   <div class="hdr-right">
-    <a class="earn-link" href="http://localhost:8787/seller.html" title="Rent out your spare AI and earn">Earn ⚡</a>
+    <a class="earn-link" href="seller.html" title="Rent out your spare AI and earn">Earn ⚡</a>
     <button class="fundbtn" id="fundBtn">Top-up</button>
     <span class="balance" id="balWrap" title=""><span class="blbl">BALANCE </span><b id="bal"><span class="radar-mini"></span></b></span>
   </div>
@@ -457,7 +455,7 @@
 
   // ---- chat ----
   function enterChat(){
-    state.warnedTrunc=false;
+    state.warnedTrunc=false; state.holdWarned=false;
     state.spent=0; state.replies=0; state.settling=false;
     $('dbAvatar').textContent=JOAO.emoji; $('dbName').textContent=JOAO.name;
     $('dbBudget').textContent='hold '+units(state.remaining);
@@ -545,6 +543,8 @@
       // Conversation memory: once older turns start dropping, say so once.
       if(data.truncated && !state.warnedTrunc){ state.warnedTrunc=true; addRow('ai-sys','(Older messages just slipped out of João’s memory — he keeps the most recent part of the chat.)'); }
       state.spent=data.totalCharge; state.remaining=data.remaining; state.replies++;
+      if(state.remaining<100 && !state.holdWarned){ state.holdWarned=true;
+        addRow('ai-sys','That’s this chat’s hold used up. Tap <b>End barter</b> to get your unused BarŦoks back, then start a fresh chat.'); }
     }catch(e){
       const m=e.message;
       let msg='Sorry, something went wrong: '+m;
@@ -560,7 +560,7 @@
 
   // ---- rate + settle ----
   $('endBtn').onclick=()=>{
-    if(state.replies===0){ show('request'); return; }
+    if(state.replies===0){ settleUp(); return; } // no replies → still settle so the held BarŦoks come straight back
     state.rating=0;state.tags=[];
     $('rAvatar').textContent=JOAO.emoji;$('rName').textContent=JOAO.name;
     $('rTripMeta').textContent=state.replies+(state.replies===1?' reply':' replies')+' · '+units(state.spent)+' used';
@@ -621,7 +621,7 @@
          <div class="rline total"><span>Settlement</span><span><a href="${data.links.operator}" target="_blank">view record ↗</a></span></div>
          <div class="rline"><span>Double-checked</span><span title="${data.settleProposalId}">✓ secured</span></div>
          <div class="rline"><span>Your rating</span><span>${ratedLine}</span></div>
-         <div class="rline" id="refundLine"><span>Refund status</span><span>landing in your wallet…</span></div>`;
+         <div class="rline" id="refundLine"><span>Refund status</span><span><span class="radar-mini" style="margin-right:6px;"></span>landing in your wallet…</span></div>`;
       // absorb the refund note in the background, then refresh the balance
       (async()=>{
         try{

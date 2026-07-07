@@ -93,9 +93,11 @@ const TIERS = {
 // Sessions persist to a JSON snapshot so a bridge crash/restart can never
 // strand an escrowed hold: unsettled sessions reload at boot, and the sweeper
 // below auto-settles abandoned ones (refunding the unused hold).
-const SESSIONS_FILE = process.env.BARTOK_TEST === '1'
-  ? require('path').join(require('os').tmpdir(), `bartok-test-sessions-${process.pid}.json`)
-  : require('path').join(__dirname, 'sessions.json');
+const STATE_DIR = TESTING ? require('os').tmpdir() : path.join(ROOT, 'state');
+if (!TESTING) { try { fs.mkdirSync(STATE_DIR, { recursive: true }); } catch (_) {} }
+const SESSIONS_FILE = TESTING
+  ? path.join(STATE_DIR, `bartok-test-sessions-${process.pid}.json`)
+  : path.join(STATE_DIR, 'sessions.json');
 const sessions = new Map();
 try {
   for (const [k, v] of Object.entries(JSON.parse(require('fs').readFileSync(SESSIONS_FILE, 'utf8')))) {
@@ -290,8 +292,11 @@ function readBody(req) {
 // ---- per-IP rate limiter (in-memory sliding window). ponytail: a Map, not Redis.
 const rateHits = new Map(); // key `${ip}:${bucket}` -> timestamps[]
 function clientIp(req) {
+  // ngrok appends the true client IP as the LAST x-forwarded-for entry; a client
+  // can prepend spoofed values but can't remove ngrok's, so take the last one.
   const xf = req.headers['x-forwarded-for'];
-  return (xf ? String(xf).split(',')[0].trim() : '') || req.socket.remoteAddress || 'unknown';
+  const parts = xf ? String(xf).split(',').map(p => p.trim()).filter(Boolean) : [];
+  return parts[parts.length - 1] || req.socket.remoteAddress || 'unknown';
 }
 // allow `limit` requests per `windowMs`. Returns true if the request is allowed.
 function rateOk(req, bucket, limit, windowMs) {
@@ -304,7 +309,8 @@ function rateOk(req, bucket, limit, windowMs) {
   if (hits.length >= limit) { rateHits.set(key, hits); return false; }
   hits.push(now);
   rateHits.set(key, hits);
-  if (rateHits.size > 5000) rateHits.clear(); // crude unbounded-growth guard
+  // bounded growth: evict the oldest keys instead of wiping everyone's counters
+  if (rateHits.size > 5000) { const it = rateHits.keys(); for (let i = 0; i < 1000; i++) rateHits.delete(it.next().value); }
   return true;
 }
 
@@ -323,9 +329,7 @@ const usd = units => Number((units * CONFIG.usdPerBartok).toFixed(6));
 
 // ---- auth-lite: {walletId -> {name, salt, hash}} + per-wallet spend + redeemed
 // ponytail: a flat JSON file, not a DB. Good enough for the first Rita cohort.
-const USERS_FILE = TESTING
-  ? path.join(require('os').tmpdir(), `bartok-test-users-${process.pid}.json`)
-  : path.join(ROOT, 'ux-prototype', 'users.json');
+const USERS_FILE = path.join(STATE_DIR, TESTING ? `bartok-test-users-${process.pid}.json` : 'users.json');
 function loadUsers() {
   try { return JSON.parse(fs.readFileSync(USERS_FILE, 'utf8')); } catch { return {}; }
 }
@@ -334,9 +338,7 @@ const users = loadUsers();
 
 // ---- refund recovery: private refund NoteFiles persisted per buyer so a
 // browser that dies mid-settle can still collect on its next visit.
-const REFUNDS_FILE = TESTING
-  ? path.join(require('os').tmpdir(), `bartok-test-refunds-${process.pid}.json`)
-  : path.join(ROOT, 'ux-prototype', 'refunds.json');
+const REFUNDS_FILE = path.join(STATE_DIR, TESTING ? `bartok-test-refunds-${process.pid}.json` : 'refunds.json');
 function loadRefunds() { try { return JSON.parse(fs.readFileSync(REFUNDS_FILE, 'utf8')); } catch { return {}; } }
 function recordRefund(buyerId, noteFileB64) {
   if (!noteFileB64) return;
@@ -394,7 +396,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && req.url === '/api/client-log') {
     if (!rateOk(req, 'clientlog', 30, 60000)) return json(res, 429, { error: 'slow down' });
     const b = await readBody(req);
-    console.log('[client]', String(b).slice(0, 600));
+    console.log('[client]', String(b).replace(/[\r\n]+/g, ' ').slice(0, 400));
     return json(res, 200, { ok: true });
   }
 
@@ -427,7 +429,7 @@ const server = http.createServer(async (req, res) => {
     const p = await runMiden('build_escrow',
       ['--buyer', buyerId, '--budget', String(budget)], 60000);
     const params = lastJson(p.out);
-    if (!params) return json(res, 500, { error: 'build_escrow failed', detail: p.out.slice(-400) });
+    if (!params) { console.error('[build_escrow] failed:\n' + p.out.slice(-1500)); return json(res, 500, { error: 'setup_failed' }); }
     const sessionId = crypto.randomUUID();
     sessions.set(sessionId, { buyerId, tier, params, budget, escrowNoteB64: null,
       charges: [], settled: false, createdAt: Date.now(), lastActivity: Date.now() });
@@ -464,6 +466,7 @@ const server = http.createServer(async (req, res) => {
       if (s.settled) throw new Error('session already settled');
       if (!prompt) throw new Error('missing prompt');
       const msgTier = tier || s.tier;
+      if (!TIERS[msgTier]) throw new Error('unknown tier');
       if (TIERS[msgTier].requiresAccount && !hasAccount(s.buyerId)) {
         throw new Error('account_required');
       }
@@ -605,7 +608,7 @@ const server = http.createServer(async (req, res) => {
     const r = await runMiden('fund_buyer',
       ['--buyer', buyerId, '--amount', String(CONFIG.freeGrantBartok)], 240000);
     const out = lastJson(r.out);
-    if (r.code !== 0 || !out) return json(res, 500, { error: 'mint failed', detail: r.out.slice(-400) });
+    if (r.code !== 0 || !out) { console.error('[credits] mint failed:\n' + r.out.slice(-1500)); return json(res, 500, { error: 'mint_failed' }); }
     claimed[c] = true;
     users[buyerId].codes = claimed;
     delete users[buyerId].redeemed;
@@ -652,14 +655,15 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // static files (seller.html and assets on :8787; buyer UI runs on Vite :5173)
-  const rel = req.url === '/' ? '/seller.html' : req.url.split('?')[0];
-  const file = path.join(STATIC, rel);
-  if (!file.startsWith(STATIC) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
-    res.writeHead(404); res.end('not found'); return;
-  }
-  const ext = path.extname(file);
-  const ct = { '.html': 'text/html', '.css': 'text/css', '.js': 'text/javascript' }[ext] || 'application/octet-stream';
+  // static files: EXPLICIT allowlist only (the buyer UI is on Vercel; the bridge
+  // serves just João's dashboard + the shared stylesheet). An allowlist — not a
+  // directory scan — so no state file, source, or dotfile in this dir is ever
+  // reachable over the public tunnel.
+  const SERVABLE = { '/': 'seller.html', '/seller.html': 'seller.html', '/bartok.css': 'bartok.css' };
+  const name = SERVABLE[req.url.split('?')[0]];
+  if (!name) { res.writeHead(404); res.end('not found'); return; }
+  const file = path.join(STATIC, name);
+  const ct = name.endsWith('.css') ? 'text/css' : 'text/html';
   res.writeHead(200, { 'Content-Type': ct });
   res.end(fs.readFileSync(file));
 });

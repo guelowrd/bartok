@@ -41,5 +41,10 @@ else
 fi
 
 echo "starting the bridge on :8787 (proxies /guardian → :3300)…"
-# caffeinate: keep the Mac awake while the backend runs (dies with the bridge)
-exec caffeinate -dims node "$DIR/ux-prototype/server.js"
+# macOS: caffeinate keeps the Mac awake while the backend runs; Linux servers
+# don't sleep, so run node directly there.
+if command -v caffeinate >/dev/null 2>&1; then
+  exec caffeinate -dims node "$DIR/ux-prototype/server.js"
+else
+  exec node "$DIR/ux-prototype/server.js"
+fi

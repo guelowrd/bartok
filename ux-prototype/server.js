@@ -444,7 +444,11 @@ const server = http.createServer(async (req, res) => {
           throw new Error('hold_exhausted');
         }
         s.charges.push(result);
-        s.history.push({ role: 'user', content: prompt }, { role: 'assistant', content: result.reply });
+        // Memory rides inside the notarized request (4 KiB send cap → ~2.4 KB of
+        // history). Replies dominate the bytes, so store a trimmed version:
+        // ~3x more turns remembered for the same budget.
+        const gist = (result.reply || '').length > 400 ? result.reply.slice(0, 400) + '…' : result.reply;
+        s.history.push({ role: 'user', content: prompt }, { role: 'assistant', content: gist });
         recordSpend(s.buyerId, result.charge);
         sellerStats.replies += 1;
         sellerStats.earned += result.charge;

@@ -624,16 +624,18 @@
          <div class="rline total"><span>Settlement</span><span><a href="${data.links.operator}" target="_blank">view record ↗</a></span></div>
          <div class="rline"><span>Double-checked</span><span title="${data.settleProposalId}">✓ secured</span></div>
          <div class="rline"><span>Your rating</span><span>${ratedLine}</span></div>
-         <div class="rline" id="refundLine"><span>Refund status</span><span><span class="radar-mini" style="margin-right:6px;"></span>landing in your wallet…</span></div>`;
-      // absorb the refund note in the background, then refresh the balance
+         <div class="rline" id="refundLine"><span>Refund</span><span><b style="color:var(--good)">✓ back to you</b><span id="refundSync" style="color:var(--muted);font-size:11px"> · updating balance…</span></span></div>`;
+      // The refund is already yours the moment settlement lands on-chain — no need
+      // to make anyone watch the consume. Absorb it in the background so the
+      // SPENDABLE balance catches up; if this tab closes first, the init-sweep
+      // re-imports from the refund-recovery rail and absorbs it on the next visit.
       (async()=>{
         try{
           if(data.refundNoteFileB64) await w.absorbNoteFile(data.refundNoteFileB64);
           else await w.waitAndAbsorb();
           await refreshBalance();
-          const el=document.getElementById('refundLine');
-          if(el) el.innerHTML='<span>Refund status</span><span style="color:var(--good);font-weight:700;">landed ✓</span>';
         }catch(e){ console.error('refund absorb',e); }
+        const el=document.getElementById('refundSync'); if(el) el.textContent='';
       })();
     }catch(e){
       const friendly = e.message==='settle_retry'

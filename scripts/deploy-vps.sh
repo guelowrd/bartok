@@ -11,14 +11,17 @@ BARTOK="$(cd "$(dirname "$0")/.." && pwd)"
 GUARDIAN="$BARTOK/../bartok-guardian"
 
 echo "=== rsync bartok repo (+state, -build junk) → $HOST:/opt/bartok ==="
-rsync -az --delete \
-  --exclude 'miden/target' --exclude 'zktls-spike/tlsn/target' \
-  --exclude 'node_modules' --exclude '.vite' --exclude 'ux-prototype/dist' \
-  --exclude '.git' \
+# --exclude target: ALL Rust build dirs are rebuildable (miden/target 5.8G,
+# miden/contracts/*/target 3.7G, tlsn/target ~950M). --partial/--timeout survive
+# a dropped connection mid-transfer instead of failing the whole deploy.
+rsync -az --delete --partial --timeout=300 \
+  --exclude 'target' --exclude 'node_modules' --exclude '.vite' \
+  --exclude 'ux-prototype/dist' --exclude '.git' \
   "$BARTOK/" "$HOST:/opt/bartok/"
 
 echo "=== rsync bartok-guardian fork → $HOST:/opt/bartok-guardian ==="
-rsync -az --delete --exclude 'target' --exclude 'node_modules' --exclude '.git' \
+rsync -az --delete --partial --timeout=300 \
+  --exclude 'target' --exclude 'node_modules' --exclude '.git' \
   "$GUARDIAN/" "$HOST:/opt/bartok-guardian/"
 
 echo "=== ngrok config (authtoken) ==="

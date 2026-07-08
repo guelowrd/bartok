@@ -646,12 +646,25 @@
       // SPENDABLE balance catches up; if this tab closes first, the init-sweep
       // re-imports from the refund-recovery rail and absorbs it on the next visit.
       (async()=>{
+        const sync=()=>document.getElementById('refundSync');
+        // gentle nudge if it's slow, without giving up on the background absorb
+        const slow=setTimeout(()=>{ const el=sync(); if(el&&el.textContent.includes('updating')) el.textContent=' · taking a little longer, hang tight'; }, 40000);
+        let ok=false;
         try{
           if(data.refundNoteFileB64) await w.absorbNoteFile(data.refundNoteFileB64);
           else await w.waitAndAbsorb();
           await refreshBalance();
+          ok=true;
         }catch(e){ console.error('refund absorb',e); }
-        const el=document.getElementById('refundSync'); if(el) el.textContent='';
+        clearTimeout(slow);
+        const el=sync();
+        if(el){
+          if(ok){ el.textContent=' ✓ in your balance'; el.style.color='var(--good)'; }
+          // Not landed (transient wedge / out-of-sync wallet): the money is safe in the
+          // recovery rail — a reopen re-imports + absorbs it. Offer that, don't hang.
+          else { el.innerHTML=" · your BarŦoks are safe — <a href=\"#\" id=\"refundRefresh\" style=\"color:var(--cobalt);font-weight:700;\">tap to refresh</a>";
+                 const r=document.getElementById('refundRefresh'); if(r) r.onclick=(ev)=>{ev.preventDefault(); location.reload();}; }
+        }
       })();
     }catch(e){
       const friendly = e.message==='settle_retry'

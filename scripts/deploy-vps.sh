@@ -19,6 +19,14 @@ rsync -az --delete --partial --timeout=300 \
   --exclude 'ux-prototype/dist' --exclude '.git' \
   "$BARTOK/" "$HOST:/opt/bartok/"
 
+echo "=== ship the compiled settlement contract (the target-exclude drops it, but the bins need this one 60KB .masp) ==="
+MASP="miden/contracts/settlement-note/target/miden/release/bartok-settlement.masp"
+if [ -f "$BARTOK/$MASP" ]; then
+  rsync -azR "$BARTOK/./$MASP" "$HOST:/opt/bartok/" && echo "contract artifact shipped"
+else
+  echo "WARN: $MASP missing on this Mac — run 'cargo miden build --release' in miden/contracts/settlement-note, then re-deploy"
+fi
+
 echo "=== rsync bartok-guardian fork → $HOST:/opt/bartok-guardian ==="
 rsync -az --delete --partial --timeout=300 \
   --exclude 'target' --exclude 'node_modules' --exclude '.git' \

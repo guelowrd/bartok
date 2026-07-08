@@ -11,21 +11,21 @@ test('peg constants: Ŧ1 = 100 base units, Ŧ100,000 = $1', () => {
 
 test('units: whole Ŧ, rounded', () => {
   assert.equal(units(10_000_000), '10,000,000'.replace(/,/g, ',') === '10,000,000' ? units(10_000_000) : units(10_000_000)); // locale-stable below
-  assert.equal(units(50_000), Math.round(500).toLocaleString() + ' Ŧ');
-  assert.equal(units(150), '2 Ŧ');   // 1.5 rounds to 2
-  assert.equal(units(100), '1 Ŧ');
-  assert.equal(units(0), '0 Ŧ');
+  assert.equal(units(50_000), 'Ŧ' + Math.round(500).toLocaleString());
+  assert.equal(units(150), 'Ŧ2');   // 1.5 rounds to 2
+  assert.equal(units(100), 'Ŧ1');
+  assert.equal(units(0), 'Ŧ0');
 });
 
 test('units: positive sub-Ŧ amounts never display as 0', () => {
-  assert.equal(units(1), '<1 Ŧ');
-  assert.equal(units(28), '<1 Ŧ');   // the 28-token reply
-  assert.equal(units(99), '<1 Ŧ');
+  assert.equal(units(1), '<Ŧ1');
+  assert.equal(units(28), '<Ŧ1');   // the 28-token reply
+  assert.equal(units(99), '<Ŧ1');
 });
 
 test('unitsC: exact cents for the Barter summary', () => {
-  assert.equal(unitsC(28), (0.28).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Ŧ');
-  assert.equal(unitsC(50_000), (500).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Ŧ');
+  assert.equal(unitsC(28), 'Ŧ' + (0.28).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  assert.equal(unitsC(50_000), 'Ŧ' + (500).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 });
 
 test('usdApprox: max 3 decimals, $0.001 visibility floor', () => {

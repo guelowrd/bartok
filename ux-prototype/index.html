@@ -228,7 +228,7 @@
 <div id="buyModal" class="proof-overlay hidden" role="dialog" aria-modal="true" aria-label="Top-up">
   <div class="proof-card" style="max-width:420px;text-align:left;">
     <div class="proof-h" style="text-align:center;">Top-up</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;text-align:center;">100,000 Ŧ = $1. Pay with a card, or use a code.</div>
+    <div style="font-size:13px;color:var(--muted);margin-bottom:12px;text-align:center;">Ŧ100,000 = $1. Pay with a card, or use a code.</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
       <input placeholder="Card number" disabled style="grid-column:1/3;box-sizing:border-box;width:100%;min-width:0;padding:9px;border:2.5px solid var(--ink);border-radius:8px;background:#f4f4f4;">
       <input placeholder="MM/YY" disabled style="box-sizing:border-box;width:100%;min-width:0;padding:9px;border:2.5px solid var(--ink);border-radius:8px;background:#f4f4f4;">
@@ -431,7 +431,7 @@
       div.setAttribute('role','radio'); div.setAttribute('aria-checked', state.tier===key);
       const perReply=t.estT;
       div.innerHTML=`<span class="pick">✓</span><div style="flex:1;min-width:0;"><div class="name">${t.label}</div><div class="desc">${t.desc}</div></div>
-        <div class="right"><div class="est">~${perReply} Ŧ<span style="font-size:11px;color:var(--muted)"> /reply</span></div><div class="eta">${t.eta}</div></div>`;
+        <div class="right"><div class="est">~Ŧ${perReply}<span style="font-size:11px;color:var(--muted)"> /reply</span></div><div class="eta">${t.eta}</div></div>`;
       div.onclick=()=>{state.tier=key;renderClasses();updateFindLabel();};
       $('classes').appendChild(div);
     });
@@ -546,7 +546,7 @@
         ai.querySelector('.bubble').appendChild(det);
       }
       ai._price.className='price';
-      const amt=Number(data.charge)<100?'<1 Ŧ':('&minus;'+units(data.charge));
+      const amt=Number(data.charge)<100?'<Ŧ1':('&minus;'+units(data.charge));
       ai._price.innerHTML='<span class="amt">'+amt+' <span style="color:var(--muted)">≈'+usd(data.charge)+'</span></span>'
         +'<span class="v" title="Tap: what does verified mean?">✓ verified</span>'
         +'<span class="model"></span>';

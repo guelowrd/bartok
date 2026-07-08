@@ -13,7 +13,8 @@ set -euo pipefail
 echo "=== packages ==="
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
-apt-get install -qy build-essential clang pkg-config libssl-dev git curl lsof ufw tmux
+apt-get install -qy build-essential clang pkg-config libssl-dev git curl lsof ufw tmux \
+  protobuf-compiler cmake   # protoc: guardian gRPC + miden RPC bins; cmake: crypto crates
 
 echo "=== firewall: ssh only (ngrok is outbound) ==="
 ufw allow OpenSSH >/dev/null; yes | ufw enable >/dev/null || true

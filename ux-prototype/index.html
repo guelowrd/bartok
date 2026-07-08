@@ -419,7 +419,7 @@
       div.setAttribute('role','radio'); div.setAttribute('aria-checked', state.tier===key);
       const perReply=t.estT;
       div.innerHTML=`<span class="pick">✓</span><div style="flex:1;min-width:0;"><div class="name">${t.label}</div><div class="desc">${t.desc}</div></div>
-        <div class="right"><div class="est">${perReply} Ŧ<span style="font-size:11px;color:var(--muted)"> /reply</span></div><div class="eta">${t.eta}</div></div>`;
+        <div class="right"><div class="est">~${perReply} Ŧ<span style="font-size:11px;color:var(--muted)"> /reply</span></div><div class="eta">${t.eta}</div></div>`;
       div.onclick=()=>{state.tier=key;renderClasses();updateFindLabel();};
       $('classes').appendChild(div);
     });

@@ -19,6 +19,12 @@ apt-get install -qy build-essential clang pkg-config libssl-dev git curl lsof uf
 echo "=== firewall: ssh only (ngrok is outbound) ==="
 ufw allow OpenSSH >/dev/null; yes | ufw enable >/dev/null || true
 
+echo "=== swap (the tlsn compile can spike; a box with 0 swap OOM-kills the build) ==="
+if ! swapon --show | grep -q swap; then
+  fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null && swapon /swapfile
+  grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
 echo "=== node 20 ==="
 if ! command -v node >/dev/null || [ "$(node -v | cut -c2-3)" -lt 20 ]; then
   curl -fsSL https://deb.nodesource.com/setup_20.x | bash - >/dev/null

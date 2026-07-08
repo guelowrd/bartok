@@ -119,7 +119,8 @@
 <div class="scroll" id="s-request">
   <div class="inner">
     <h1>What brain<br>do you need?</h1>
-    <p class="sub">Pick a BarŦoker brain, and pay only for what you use.<br>Fret not: No bait-and-switch-model drama is even possible here! Every reply comes with proof it ran on the brain you paid for.</p>
+    <p class="sub">Pick a BarŦoker brain, and pay only for what you use.<br>Fret not: No bait-and-switch-model drama is even possible here!<br>Every reply comes with proof it ran on the brain you paid for.</p>
+    <p class="sub" style="font-size:12px;opacity:.85;margin-top:-2px;">1 BarŦok ≈ 100 basic-model tokens · Ŧ100,000 ≈ $1, so a reply costs a fraction of a cent.</p>
     <div class="classes" id="classes" aria-busy="true">
       <div class="loadbox"><div class="radar radar--load"></div><div>getting ready…</div></div>
     </div>
@@ -359,8 +360,8 @@
   function openBuy(){ $('buyModal').classList.remove('hidden'); $('buyMsg').textContent=''; $('codeInput').value=''; setTimeout(()=>$('codeInput').focus(),50); }
   const buyBusy=m=>{ $('buyMsg').innerHTML='<span class="radar-mini" style="margin-right:8px;"></span>'+m; };
   function closeBuy(){ $('buyModal').classList.add('hidden'); }
-  $('buyClose').onclick=closeBuy;
-  $('buyModal').onclick=e=>{ if(e.target===$('buyModal')) closeBuy(); };
+  $('buyClose').onclick=()=>{ state.pendingFind=false; closeBuy(); }; // manual cancel drops the pending match
+  $('buyModal').onclick=e=>{ if(e.target===$('buyModal')){ state.pendingFind=false; closeBuy(); } };
   $('codeInput').addEventListener('keydown',e=>{if(e.key==='Enter')$('redeemBtn').click();});
   $('authPass').addEventListener('keydown',e=>{if(e.key==='Enter')$('authGo').click();});
   $('redeemBtn').onclick=async()=>{
@@ -378,8 +379,8 @@
       buyBusy('Adding your BarŦoks (can take a minute or two)…');
       const n=await w.waitAndAbsorb();
       await refreshAccount(); await refreshBalance();
-      if(n>0){ $('buyMsg').textContent='Added '+units(r.amount)+' (≈'+usd(r.amount)+') ✓'; setTimeout(closeBuy, 1200); }
-      else { $('buyMsg').textContent='Your BarŦoks are on their way — they\'ll appear in your balance shortly.'; w.waitAndAbsorb(600000).then(()=>refreshBalance()); setTimeout(closeBuy, 2500); }
+      if(n>0){ $('buyMsg').textContent='Added '+units(r.amount)+' (≈'+usd(r.amount)+') ✓'; setTimeout(()=>{ closeBuy(); if(state.pendingFind){ state.pendingFind=false; startFind(); } }, 1200); }
+      else { $('buyMsg').textContent='Your BarŦoks are on their way — they\'ll appear in your balance shortly.'; const resume=state.pendingFind; state.pendingFind=false; w.waitAndAbsorb(600000).then(()=>{ refreshBalance(); if(resume) startFind(); }); setTimeout(closeBuy, 2500); }
     }catch(e){ $('buyMsg').textContent='Something went wrong: '+e.message; }
     $('redeemBtn').disabled=false;
   };
@@ -387,9 +388,9 @@
   // ---- Account (auth-lite) ----
   function openAuth(why){ $('authWhy').textContent=why||''; $('authMsg').textContent=''; $('authModal').classList.remove('hidden'); setTimeout(()=>$('authName').focus(),50); }
   function closeAuth(){ $('authModal').classList.add('hidden'); }
-  $('authClose').onclick=closeAuth;
-  $('authModal').onclick=e=>{ if(e.target===$('authModal')) closeAuth(); };
-  document.addEventListener('keydown',e=>{ if(e.key==='Escape') ['buyModal','authModal','proofModal'].forEach(id=>$(id).classList.add('hidden')); });
+  $('authClose').onclick=()=>{ state.pendingFind=false; closeAuth(); };
+  $('authModal').onclick=e=>{ if(e.target===$('authModal')){ state.pendingFind=false; closeAuth(); } };
+  document.addEventListener('keydown',e=>{ if(e.key==='Escape'){ state.pendingFind=false; ['buyModal','authModal','proofModal'].forEach(id=>$(id).classList.add('hidden')); } });
   $('authGo').onclick=async()=>{
     const name=$('authName').value.trim(), password=$('authPass').value;
     if(!password || password.length<6){ $('authMsg').textContent='Password needs at least 6 characters.'; return; }
@@ -400,6 +401,7 @@
       if(r.error){ $('authMsg').textContent=r.error==='exists'?'You already have an account.':r.error; $('authGo').disabled=false; return; }
       await refreshAccount();
       closeAuth();
+      if(state.pendingFind){ state.pendingFind=false; startFind(); } // resume the Genius match they were starting
     }catch(e){ $('authMsg').textContent=e.message; }
     $('authGo').disabled=false;
   };
@@ -425,7 +427,7 @@
     });
   }
 
-  $('findBtn').onclick=async()=>{
+  async function startFind(){
     if($('findBtn').textContent.indexOf('retry')>=0){ location.reload(); return; }
     await walletReady;
     show('matching');
@@ -434,9 +436,12 @@
     try{
       const bal0=await refreshBalance();
       const s=await fetch(api('/api/session/start'),{method:'POST',body:JSON.stringify({buyerId:w.id(),tier:state.tier,balance:String(bal0??0)})}).then(r=>r.json());
-      if(s.error==='account_required'){ show('request'); openAuth('Create a free account to unlock the Genius brain.'); return; }
-      if(s.error==='insufficient_credits'){ show('request'); openBuy(); return; }
+      // Gate → remember the intent so completing the modal resumes THIS match
+      // (find + start the chat they asked for) instead of dropping them home.
+      if(s.error==='account_required'){ state.pendingFind=true; show('request'); openAuth('Create a free account to unlock the Genius brain.'); return; }
+      if(s.error==='insufficient_credits'){ state.pendingFind=true; show('request'); openBuy(); return; }
       if(s.error) throw new Error(s.error);
+      state.pendingFind=false;
       state.sessionId=s.sessionId; state.faucet=s.escrowTemplate.faucet;
       state.budget=s.escrowTemplate.budget; state.remaining=state.budget;
 
@@ -453,7 +458,8 @@
       note.style.color='var(--coral)';
       setTimeout(()=>{ note.textContent=orig; note.style.color=''; }, 8000);
     }
-  };
+  }
+  $('findBtn').onclick=startFind;
 
   // ---- chat ----
   function enterChat(){

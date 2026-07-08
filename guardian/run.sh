@@ -55,4 +55,8 @@ for f in "$GUARDIAN_ACK_FALCON_SECRET_PATH" "$GUARDIAN_ACK_ECDSA_SECRET_PATH"; d
 done
 
 cd "$SRC"
-exec cargo run --release -p guardian-server --bin server
+# Prefer the pre-built release binary: `cargo run` re-checks fingerprints and can
+# trigger a full recompile on every restart (~7 min of downtime). The built binary
+# starts instantly. Fall back to `cargo run` if it isn't built yet (dev/first run).
+BIN="$SRC/target/release/server"
+if [ -x "$BIN" ]; then exec "$BIN"; else exec cargo run --release -p guardian-server --bin server; fi

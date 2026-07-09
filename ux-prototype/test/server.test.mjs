@@ -163,6 +163,20 @@ test('abandoned sessions: the sweeper auto-settles idle escrowed holds and recor
   assert.equal(again.files.length, before, 'settled sessions are not re-swept');
 });
 
+test('sweeper evicts a ghost whose escrow note is already spent (no infinite hourly retry)', async () => {
+  const SPENT = '0x' + 'd'.repeat(30);        // stub: settle returns "nullifiers already exist"
+  const { sweepAbandonedSessions } = require('../server.js');
+  const s = await jpost('/api/session/start', { buyerId: SPENT, tier: 'basic', balance: '10000000' });
+  await jpost('/api/session/escrow', { sessionId: s.sessionId, noteB64: 'bm90ZQ==' });
+  await new Promise((r) => setTimeout(r, 80));            // exceed the test idle threshold (50ms)
+  await sweepAbandonedSessions();
+  // terminal error → session evicted, and NO bogus refund recorded for a note that's gone
+  const refunds = await (await fetch(base + `/api/refunds?buyerId=${SPENT}`)).json();
+  assert.equal(refunds.files.length, 0, 'no refund recorded for an already-spent note');
+  const end = JSON.parse((await (await post('/api/session/end', { sessionId: s.sessionId })).text()).trim().split('\n').pop());
+  assert.equal(end.error, 'unknown session', 'ghost session was evicted, not left to retry hourly');
+});
+
 test('sessions persist to the snapshot file (crash-restart safety)', async () => {
   const fs = await import('node:fs');
   const os = await import('node:os');

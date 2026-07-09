@@ -158,6 +158,8 @@ const TEST_STUBS = {
       TEST_STUBS._wedges = (TEST_STUBS._wedges || 0) + 1;
       if (TEST_STUBS._wedges <= 2) return { code: 1, out: 'Cannot push new delta: there is already a non-canonical delta pending' };
     }
+    // buyer ending 'dd': escrow note already consumed on-chain — terminal, never settles
+    if (buyer.endsWith('dd')) return { code: 1, out: 'nullifiers already exist: [0xdeadbeef]' };
     return JSON.stringify({ charge: 42, refund: 458, settleProposalId: '0xprop',
       sellerNoteId: '0xsn', buyerNoteId: '0xbn', refundNoteFileB64: 'cmVmdW5k',
       sellerNoteFileB64: null, explorer: 'https://example.test/acct' });
@@ -713,6 +715,13 @@ async function sweepAbandonedSessions() {
         persistSessions();
         if (settled.sellerNoteFileB64) runMiden('joao_sweep', ['--note-file-b64', settled.sellerNoteFileB64], 300000).catch(() => {});
         console.log(`[sweep] settled ${id}: refund ${settled.refund} recorded for ${s.buyerId}`);
+      } else if (/nullifiers already exist/.test(r.out)) {
+        // The escrow note was already consumed on-chain (e.g. a prior settle
+        // landed but its settled=true write was lost). Settlement can never
+        // succeed, so stop retrying it every hour and evict the ghost.
+        sessions.delete(id);
+        persistSessions();
+        console.log(`[sweep] evicted ${id}: escrow note already spent, nothing to settle`);
       } else {
         console.error(`[sweep] settle failed for ${id} (will retry next sweep):\n` + r.out.slice(-800));
       }

@@ -122,6 +122,18 @@ test('operator delta wedge: a single end call auto-retries through it and succee
   assert.equal(done.settleProposalId, '0xprop');
 });
 
+test('spent escrow: end reports escrow_spent (terminal) and evicts the session', async () => {
+  const SPENT = '0x' + 'd'.repeat(30);   // stub: settle → "nullifiers already exist"
+  const s = await jpost('/api/session/start', { buyerId: SPENT, tier: 'basic', balance: '10000000' });
+  await jpost('/api/session/escrow', { sessionId: s.sessionId, noteB64: 'bm90ZQ==' });
+  const first = JSON.parse((await (await post('/api/session/end', { sessionId: s.sessionId })).text()).trim().split('\n').pop());
+  assert.equal(first.error, 'escrow_spent', 'terminal error, not settle_retry');
+  const second = JSON.parse((await (await post('/api/session/end', { sessionId: s.sessionId })).text()).trim().split('\n').pop());
+  assert.equal(second.error, 'unknown session', 'session evicted — no infinite retry loop');
+  const refunds = await (await fetch(base + `/api/refunds?buyerId=${SPENT}`)).json();
+  assert.equal(refunds.files.length, 0, 'no bogus refund recorded for a spent note');
+});
+
 test('malformed JSON body returns 400, never hangs the socket', async () => {
   const r = await fetch(base + '/api/session/start', { method: 'POST', body: '{not json' });
   assert.equal(r.status, 400);
@@ -192,6 +204,7 @@ test('UI ships the settle-retry affordance (guards against silent copy regressio
   assert.match(html, /retrySettle/, 'Try-again button missing from index.html');
   assert.match(html, /Not wrapped up yet/, 'friendly settle-failure copy missing');
   assert.match(html, /settle_retry/, 'settle_retry error mapping missing');
+  assert.match(html, /escrow_spent/, 'escrow_spent honest-copy mapping missing');
 });
 
 test('abuse guards: oversized body rejected, redeem rate limit kicks in', async () => {

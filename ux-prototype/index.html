@@ -667,6 +667,14 @@
         }
       })();
     }catch(e){
+      if(e.message==='escrow_spent'){
+        // The escrow was already consumed on-chain — nothing left to settle,
+        // so retrying would only fail again. Honest copy, no retry button.
+        $('receiptBody').innerHTML='<div class="rline"><span>Already closed out</span></div>'
+          +'<div class="rline" style="font-size:13px;">This session was already settled on-chain — there’s nothing left to wrap up and your BarŦoks are safe. Your balance is up to date.</div>';
+        refreshBalance().catch(()=>{});
+        state.settling=false; return;
+      }
       const friendly = e.message==='settle_retry'
         ? 'The network hiccuped while wrapping up — this happens sometimes and your BarŦoks are safe.'
         : 'Something went wrong wrapping up — your BarŦoks are safe. ('+e.message+')';

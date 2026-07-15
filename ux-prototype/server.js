@@ -176,6 +176,10 @@ function runMiden(bin, args, timeout) {
   return next;
 }
 
+// The node reports a consumed input note as "nullifiers already exist" — the
+// escrow can never be settled again, so callers must evict, not retry.
+const ESCROW_SPENT_RE = /nullifiers already exist/;
+
 // Parse the last stdout line of a bin as JSON (our bins' machine-readable contract).
 function lastJson(out) {
   const lines = out.trim().split('\n').filter(l => l.trim().startsWith('{'));
@@ -556,6 +560,14 @@ const server = http.createServer(async (req, res) => {
         ], 480000);
         settled = lastJson(r.out);
         if (r.code === 0 && settled) break;
+        if (ESCROW_SPENT_RE.test(r.out)) {
+          // The escrow note is already consumed on-chain — settling can never
+          // succeed, so stop the retry treadmill and evict the session.
+          console.error(`[settle] ${body.sessionId} escrow already spent — evicting`);
+          sessions.delete(body.sessionId);
+          persistSessions();
+          throw new Error('escrow_spent');
+        }
         const wedged = /non-canonical delta pending/.test(r.out);
         console.error(`[settle] attempt ${attempt} failed${wedged ? ' (operator delta wedge)' : ''}:\n` + r.out.slice(-1500));
         if (!wedged || attempt === 6) { settled = null; break; }
@@ -588,7 +600,7 @@ const server = http.createServer(async (req, res) => {
         refundNoteFileB64: settled.refundNoteFileB64,
         links: { operator: settled.explorer } });
     } catch (e) {
-      if (e.message !== 'settle_retry' && e.message !== 'already settled') console.error('[settle] error:', e.message);
+      if (e.message !== 'settle_retry' && e.message !== 'already settled' && e.message !== 'escrow_spent') console.error('[settle] error:', e.message);
       emit({ type: 'done', error: String(e.message || e) });
     } finally {
       if (guarded) guarded.settling = false; // released on error/retry; a settled session is already evicted
@@ -715,7 +727,7 @@ async function sweepAbandonedSessions() {
         persistSessions();
         if (settled.sellerNoteFileB64) runMiden('joao_sweep', ['--note-file-b64', settled.sellerNoteFileB64], 300000).catch(() => {});
         console.log(`[sweep] settled ${id}: refund ${settled.refund} recorded for ${s.buyerId}`);
-      } else if (/nullifiers already exist/.test(r.out)) {
+      } else if (ESCROW_SPENT_RE.test(r.out)) {
         // The escrow note was already consumed on-chain (e.g. a prior settle
         // landed but its settled=true write was lost). Settlement can never
         // succeed, so stop retrying it every hour and evict the ghost.

@@ -12,17 +12,23 @@
 // note-script context. Trust-wise this is equivalent to deriving recipients
 // on-chain from creator-supplied ids: either way the escrow creator picks the
 // payees, and the operator validates the escrow off-chain before serving.
-// On-chain oracle gating (verify an oracle attestation before paying) remains
-// deferred: the note trusts the executor-supplied charge. See ARCHITECTURE.md.
+// Consumption is gated ON-chain: the script asserts the executing account is
+// the operator multisig (storage felts 12-13), so nobody else — including the
+// buyer wallet that created the note and holds its details — can consume the
+// escrow. On-chain oracle gating (verify an oracle attestation before paying)
+// remains deferred: the note trusts the operator-supplied charge. See
+// ARCHITECTURE.md.
 #![no_std]
 #![feature(alloc_error_handler)]
 
 use miden::*;
 
-/// Note storage layout: 11 felts, deserialized into these fields in
+/// Note storage layout: 13 felts, deserialized into these fields in
 /// declaration order by the `#[note]` macro. Keep in sync with the
-/// NoteStorage construction in integration tests, bins, and the browser
-/// wallet (ux-prototype/src/wallet.js).
+/// NoteStorage construction sites: integration/src/bin/build_escrow.rs,
+/// integration/src/bin/smoke_escrow.rs, and
+/// integration/tests/settlement_split_test.rs (the browser wallet replays
+/// build_escrow's bytes and never constructs storage).
 #[note]
 struct BartokSettlement {
     seller_recipient_0: Felt,
@@ -36,12 +42,23 @@ struct BartokSettlement {
     buyer_recipient_3: Felt,
     buyer_tag: Felt,
     note_type: Felt,
+    operator_prefix: Felt,
+    operator_suffix: Felt,
 }
 
 #[note]
 impl BartokSettlement {
     #[note_script]
     fn run(self, arg: Word) {
+        // Only the operator multisig may consume the escrow. Without this gate
+        // the note creator (the buyer wallet holds the private note's details)
+        // could consume it with charge = 0 and refund itself the full budget,
+        // stiffing the seller. Same target-assert pattern as standard P2ID.
+        assert!(
+            active_account::get_id() == AccountId::new(self.operator_prefix, self.operator_suffix),
+            "only the operator multisig may consume the settlement note"
+        );
+
         let charge = arg[0];
         let note_type = NoteType::from(self.note_type);
 

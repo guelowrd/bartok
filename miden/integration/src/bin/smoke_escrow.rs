@@ -61,6 +61,9 @@ async fn main() -> Result<()> {
             .context("run setup_accounts first")?;
     let seller = AccountId::from_hex(accounts["sellerMultisig"].as_str().context("sellerMultisig missing — run setup_multisigs")?)?;
     let faucet = AccountId::from_hex(accounts["faucet"].as_str().context("faucet missing")?)?;
+    let operator = AccountId::from_hex(
+        accounts["operatorMultisig"].as_str().context("operatorMultisig missing — run setup_multisigs")?,
+    )?;
     let operator_tag: u32 = accounts["operatorTag"].as_u64().context("operatorTag missing")? as u32;
 
     let ClientSetup {
@@ -149,6 +152,8 @@ async fn main() -> Result<()> {
         br[0], br[1], br[2], br[3],
         Felt::from(NoteTag::with_account_target(buyer.id())),
         Felt::from(NoteType::Private),
+        operator.prefix().as_felt(),
+        operator.suffix(),
     ])?;
 
     let escrow_note = Note::new(

@@ -66,6 +66,9 @@ fn main() -> Result<()> {
         accounts["sellerMultisig"].as_str().context("sellerMultisig missing")?,
     )?;
     let faucet = AccountId::from_hex(accounts["faucet"].as_str().context("faucet missing")?)?;
+    let operator = AccountId::from_hex(
+        accounts["operatorMultisig"].as_str().context("operatorMultisig missing — run setup_multisigs")?,
+    )?;
     let operator_tag = accounts["operatorTag"].as_u64().context("operatorTag missing")? as u32;
     if seller == buyer {
         bail!("seller and buyer must differ");
@@ -78,13 +81,16 @@ fn main() -> Result<()> {
     let sr = seller_recipient.digest();
     let br = buyer_recipient.digest();
 
-    // 11-felt BartokSettlement storage (precomputed recipients + tags + note type).
+    // 13-felt BartokSettlement storage (precomputed recipients + tags + note
+    // type + operator gate: only the operator multisig may consume).
     let storage = NoteStorage::new(vec![
         sr[0], sr[1], sr[2], sr[3],
         Felt::from(NoteTag::with_account_target(seller)),
         br[0], br[1], br[2], br[3],
         Felt::from(NoteTag::with_account_target(buyer)),
         Felt::from(NoteType::Private),
+        operator.prefix().as_felt(),
+        operator.suffix(),
     ])?;
 
     let masp_bytes = std::fs::read(MASP)

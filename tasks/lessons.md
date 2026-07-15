@@ -24,3 +24,14 @@ Edited index.html while a browser-driven two-barter test was running on the Vite
 dev server; HMR hot-reloaded the tab and wiped window state, killing the test.
 Rule: never edit ux-prototype/ files while a browser test runs against :5173 —
 finish/observe the test first, or test against a built artifact.
+
+## 2026-07-15 — Blanket "consume everything" loops + creator-visible custom notes
+The wallet's absorbNotes() consumed every note listAvailable returned; the SDK
+lists custom-script notes as consumable by their creator, so a background sweep
+ate the LIVE session escrow (charge 0 → full self-refund, seller stiffed, settle
+dead forever on "nullifiers already exist"). Two rules: (1) any auto-consume loop
+must WHITELIST note scripts (P2ID root only), never blanket-consume; (2) a note
+that must only be spent by one party needs the restriction ON-CHAIN in its script
+(P2ID-style target assert) — client-side politeness is not an invariant. Also:
+when a retry loop wraps an on-chain submit, classify errors terminal-vs-transient
+first ("nullifiers already exist" can never succeed on retry; evict, don't loop).

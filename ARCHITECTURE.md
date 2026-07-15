@@ -62,10 +62,18 @@ never the words wallet, note, escrow, Guardian, or Miden.
 
 - **Charge enters as the note ARG at consumption time** (`arg[0]`): the session total is
   only known at "End barter", while the escrow note is created at session start.
-- **P2ID recipients are precomputed by the note creator** and carried in the 11-felt note
+- **P2ID recipients are precomputed by the note creator** and carried in the 13-felt note
   storage (keeps the note script allocation-free; sidesteps a midenc 0.9 operand-mangling
   bug in `note::build_recipient`). Trust-equivalent to on-chain derivation from
   creator-supplied ids.
+- **Consumption is operator-gated ON-chain**: the last two storage felts carry the
+  operator multisig id (prefix, suffix) and the script asserts
+  `active_account::get_id()` matches before splitting (the standard P2ID target assert).
+  Without this, the buyer wallet — which created the note and holds its private
+  details — could consume the escrow with charge 0 and refund itself the full hold
+  (this actually happened via the wallet's blanket background absorb; see the
+  2026-07-15 gotcha in `tasks/todo.md`). The wallet additionally absorbs only
+  P2ID-script notes so it never even attempts a doomed escrow consume.
 - **Private notes travel as bytes**: the browser serializes the escrow `Note` for the
   bridge; the settlement consumes it as an *unauthenticated input*; the refund returns as
   a serialized `NoteFile` that the wallet imports and consumes via a Guardian proposal.
@@ -81,7 +89,8 @@ summary**, and Guardian only co-signs deltas that consistently extend each accou
 canonical state. What it does not yet validate is business policy — that the charge in a
 `bartok_settle` proposal matches an oracle attestation. That policy hook (an upstream
 Guardian change) is the gating endgame; until then the note trusts the operator-supplied
-charge, bounded by the escrowed hold.
+charge, bounded by the escrowed hold. (Consumer restriction is no longer deferred: since
+2026-07-15 the note script itself rejects any consumer but the operator multisig.)
 
 ## Trust model
 - **Nothing is custodial.** Funds live in the buyer's multisig or in on-chain notes;

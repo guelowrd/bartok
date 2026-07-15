@@ -58,6 +58,27 @@ forms, XSS via textContent). Tests 15→22. Deferred/documented: no wallet-owner
 must close before BART has value; full UX a11y backlog (keyboard nav on custom controls,
 coral contrast) triaged in review.
 
+## Payback/settle gotcha (root-caused + fixed 2026-07-15)
+- **The buyer wallet ate its own live escrow.** The web SDK lists custom-script notes as
+  consumable by the account that holds their details (it can't evaluate the script), so
+  `listAvailable` returned the LIVE escrow to its creator, and the blanket `absorbNotes()`
+  background loops (init-sweep on every page load / second tab, post-buy `waitAndAbsorb`)
+  consumed it mid-session with charge arg 0 → full self-refund, João stiffed, and the
+  operator's settle failed forever with `nullifiers already exist` (Rita saw the infinite
+  "Not wrapped up yet / network hiccuped" retry loop, plus Guardian delta-wedge churn from
+  each doomed re-submit). Diagnosed from bridge+guardian journals: buyer delta canonicalized
+  16:16:23 mid-chat, settle's FIRST attempt failed on the spent nullifier at 16:19:33.
+- **Fix (three layers)**: (1) on-chain operator gate — settlement note storage is now
+  13 felts (+operator prefix/suffix) and the script asserts `active_account::get_id()`
+  matches (P2ID-style target assert; `settlement_gate_rejects_non_operator` MockChain
+  test pins it); (2) wallet absorbs ONLY P2ID-script-root notes (mints/refunds), so it
+  never attempts a doomed escrow consume; (3) bridge maps `nullifiers already exist` to a
+  terminal `escrow_spent` (evict + honest "Already closed out" copy, no retry button) in
+  BOTH /api/session/end and the sweeper (shared ESCROW_SPENT_RE).
+- **Deploy sequencing matters**: old-artifact escrow notes keep the ungated script (a
+  note carries its script), so ship the frontend filter FIRST, drain/evict in-flight
+  sessions, then ship backend + new .masp. New escrows are gated from then on.
+
 ## Mobile gotchas (hard-won 2026-07-06)
 - **iOS WebKit kills the miden-sdk workers** → wallet init dies with the SDK's
   worker-error rehydrator ("Unknown error received from worker", empty payload).
@@ -110,7 +131,8 @@ coral contrast) triaged in review.
 ## Testnet MVP (2026-07-03) — SHIPPED
 
 - [x] **v0.15 migration**: standalone workspace at `miden/` (no external template checkout);
-      contract ported to the typed `#[note]` macro (11 felts, charge as note arg, recipients
+      contract ported to the typed `#[note]` macro (11 felts — 13 since the 2026-07-15
+      operator gate, charge as note arg, recipients
       precomputed); MockChain regression green incl. charge=0 and charge=budget edges
       → verify: `./stitch.sh --mock`
 - [x] **Testnet ops**: `setup_accounts` (João `0x09bd26…`, operator `0x363a27…`, BART faucet
@@ -125,7 +147,7 @@ coral contrast) triaged in review.
       tier → verified: same prompt through both tiers, models differ, 7x pricing
 - [x] **Buyer wallet in browser**: Vite + vanilla + raw `@miden-sdk` 0.15.3
       (`src/wallet.js`); create-or-load, Get BART (mint+absorb), fundEscrow (11-felt
-      storage, remote prover), refund absorb by note id
+      storage — 13 since the 2026-07-15 operator gate, remote prover), refund absorb by note id
       → verified: full click-through incl. balance ledger check (50,000 − 2,244 = 47,756)
 - [x] **The aha ("Ask Genius")**: per-message tier + boost re-ask with stacked comparison;
       verified model chip + price from the zkTLS proof

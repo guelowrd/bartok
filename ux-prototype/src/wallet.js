@@ -5,7 +5,7 @@
 // Public surface kept stable for index.html: init(), id(), getBalance(),
 // fund()/waitAndAbsorb() (mint consume), fundEscrow() (custom proposal),
 // absorbNoteFile() (private refund consume).
-import { MidenClient, AuthSecretKey, AccountId } from "@miden-sdk/miden-sdk";
+import { MidenClient, AuthSecretKey, AccountId, NoteScript } from "@miden-sdk/miden-sdk";
 import { MultisigClient, FalconSigner, AccountInspector } from "@openzeppelin/miden-multisig-client";
 
 const RPC_URL = "https://rpc.testnet.miden.io";
@@ -113,14 +113,25 @@ export class BartokWallet {
     return bal ? bal.amount : 0n;
   }
 
-  /** Consume every available note (mints, refunds) via a Guardian consume proposal.
+  /** Consume every available P2ID note (mints, refunds) via a Guardian consume
+   * proposal. ONLY P2ID: listAvailable also returns custom-script notes this
+   * account created — the LIVE session escrow! — and blanket-consuming those
+   * ate the escrow mid-session (charge 0 → full self-refund, seller stiffed,
+   * settle then failed forever with "nullifiers already exist"). The contract
+   * now gates consumption to the operator, but attempting it would still burn
+   * a Guardian proposal cycle and wedge this account's pending delta.
    * Resume-first: Guardian allows ONE pending delta per account and caps pending
    * proposals at 20 — so re-execute an existing proposal for these notes instead
    * of piling up new ones, and execute ONCE (a failed execute leaves an orphaned
    * delta that must discard before the next poll can succeed). */
   async absorbNotes() {
     await this.client.sync();
-    const available = await this.client.notes.listAvailable({ account: this.id() });
+    this._p2idRoot ||= NoteScript.p2id().root().toHex();
+    const available = (await this.client.notes.listAvailable({ account: this.id() }))
+      .filter((r) => {
+        try { return r.details().recipient().script().root().toHex() === this._p2idRoot; }
+        catch (_) { return false; }
+      });
     if (!available.length) return 0;
     const ids = available.map((r) => r.id().toString());
 

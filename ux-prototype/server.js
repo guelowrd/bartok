@@ -165,6 +165,8 @@ const TEST_STUBS = {
       sellerNoteFileB64: null, explorer: 'https://example.test/acct' });
   },
   joao_sweep: () => JSON.stringify({ ok: true }),
+  verify_escrow: () => JSON.stringify(
+    process.env.BARTOK_TEST_ESCROW_UNCONFIRMED ? { committed: false, budget: 0 } : { committed: true, budget: 50000 }),
 };
 function runMiden(bin, args, timeout) {
   if (TESTING) {
@@ -207,6 +209,9 @@ let busy = false;
 async function runAnswer(prompt, tier, history, onStage) {
   if (TESTING) {
     onStage('answer'); onStage('thinking'); onStage('received'); onStage('verify');
+    // Test-only seam: hold the reply in flight so a test can settle mid-reply.
+    const d = Number(process.env.BARTOK_TEST_CHAT_DELAY_MS) || 0;
+    if (d) await new Promise((r) => setTimeout(r, d));
     const { truncated } = buildMessages(history || [], prompt);
     return { reply: 'stub reply', reasoning: null, truncated,
       model: tier === 'genius' ? 'stub-genius' : 'stub-basic', tier, tokens: 42, charge: 42 * (TIERS[tier].pricePerToken) };
@@ -455,14 +460,23 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && req.url === '/api/session/escrow') {
     const body = await readJson(req); if (!body) return json(res, 400, { error: 'bad_json' });
-    const { sessionId, noteB64 } = body;
-    const s = sessions.get(sessionId);
+    const s = sessions.get(body.sessionId);
     if (!s) return json(res, 404, { error: 'unknown session' });
-    if (!noteB64) return json(res, 400, { error: 'missing noteB64 (private escrow needs full note details)' });
-    s.escrowNoteB64 = noteB64;
+    // Never trust the client's account of the escrow. The bridge built the note
+    // itself at session/start (s.params.noteB64) — confirm THAT exact note is
+    // funded + committed on-chain before arming the session for paid chat.
+    // Serving inference against a note the client merely claims exists would let
+    // a buyer take free service (and crafted note bytes could redirect payout).
+    const vr = await runMiden('verify_escrow', ['--escrow-note-b64', s.params.noteB64], 180000);
+    const v = lastJson(vr.out);
+    if (!v || !v.committed) {
+      console.error(`[session] ${body.sessionId} escrow not confirmed on-chain`);
+      return json(res, 400, { error: 'escrow_unconfirmed' });
+    }
+    s.escrowNoteB64 = s.params.noteB64;
     s.lastActivity = Date.now();
     persistSessions();
-    console.log(`[session] ${sessionId} escrow registered`);
+    console.log(`[session] ${body.sessionId} escrow confirmed on-chain (budget ${v.budget})`);
     json(res, 200, { ok: true, budget: s.budget });
     return;
   }
@@ -564,6 +578,7 @@ const server = http.createServer(async (req, res) => {
           // The escrow note is already consumed on-chain — settling can never
           // succeed, so stop the retry treadmill and evict the session.
           console.error(`[settle] ${body.sessionId} escrow already spent — evicting`);
+          s.settled = true; // a reply in flight on this session must not be given away free
           sessions.delete(body.sessionId);
           persistSessions();
           throw new Error('escrow_spent');
@@ -581,6 +596,9 @@ const server = http.createServer(async (req, res) => {
       sellerStats.settled += 1;
       // ARCH#4: settled → evict from memory + snapshot (refund lives in refunds.json;
       // nothing reads a settled session, and keeping it persisted user prompts/replies).
+      // Flag before evicting so a reply still in flight on this session (chat and
+      // end aren't mutually exclusive) hits the `s.settled` guard and isn't free.
+      s.settled = true;
       sessions.delete(body.sessionId);
       persistSessions();
       // João consuming his payment is off Rita's critical path: reconcile it in
@@ -723,6 +741,7 @@ async function sweepAbandonedSessions() {
       const settled = lastJson(r.out);
       if (r.code === 0 && settled) {
         recordRefund(s.buyerId, settled.refundNoteFileB64);
+        s.settled = true;
         sessions.delete(id);
         persistSessions();
         if (settled.sellerNoteFileB64) runMiden('joao_sweep', ['--note-file-b64', settled.sellerNoteFileB64], 300000).catch(() => {});
@@ -731,6 +750,7 @@ async function sweepAbandonedSessions() {
         // The escrow note was already consumed on-chain (e.g. a prior settle
         // landed but its settled=true write was lost). Settlement can never
         // succeed, so stop retrying it every hour and evict the ghost.
+        s.settled = true;
         sessions.delete(id);
         persistSessions();
         console.log(`[sweep] evicted ${id}: escrow note already spent, nothing to settle`);

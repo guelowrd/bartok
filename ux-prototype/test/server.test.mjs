@@ -122,6 +122,32 @@ test('operator delta wedge: a single end call auto-retries through it and succee
   assert.equal(done.settleProposalId, '0xprop');
 });
 
+test('escrow not committed on-chain: session/escrow refuses and chat stays blocked', async () => {
+  const BUYER = '0x' + 'a1'.repeat(15);
+  const s = await jpost('/api/session/start', { buyerId: BUYER, tier: 'basic', balance: '10000000' });
+  process.env.BARTOK_TEST_ESCROW_UNCONFIRMED = '1';
+  const er = await jpost('/api/session/escrow', { sessionId: s.sessionId, noteB64: 'bm90ZQ==' });
+  delete process.env.BARTOK_TEST_ESCROW_UNCONFIRMED;
+  assert.equal(er.error, 'escrow_unconfirmed', 'an unfunded/uncommitted escrow must be refused');
+  const chat = (await (await post('/api/chat', { sessionId: s.sessionId, prompt: 'hi' })).text()).trim().split('\n').pop();
+  assert.match(chat, /no escrow yet/, 'unconfirmed escrow must not unlock paid chat');
+});
+
+test('settle during an in-flight reply refuses the reply instead of giving it away free', async () => {
+  const BUYER = '0x' + 'c'.repeat(30);   // no stub-special suffix → settle succeeds
+  const s = await jpost('/api/session/start', { buyerId: BUYER, tier: 'basic', balance: '10000000' });
+  await jpost('/api/session/escrow', { sessionId: s.sessionId, noteB64: 'bm90ZQ==' });
+  process.env.BARTOK_TEST_CHAT_DELAY_MS = '250';   // hold the reply in flight
+  const chatP = post('/api/chat', { sessionId: s.sessionId, prompt: 'hi' }).then((r) => r.text());
+  await new Promise((r) => setTimeout(r, 60));      // let chat enter runAnswer
+  const end = JSON.parse((await (await post('/api/session/end', { sessionId: s.sessionId })).text()).trim().split('\n').pop());
+  assert.equal(end.error, undefined, 'the end call itself settles fine');
+  const chatDone = JSON.parse((await chatP).trim().split('\n').pop());
+  delete process.env.BARTOK_TEST_CHAT_DELAY_MS;
+  assert.equal(chatDone.error, 'session already settled', 'a reply that finishes after settle must be refused, not free');
+  assert.equal(chatDone.reply, undefined, 'no free reply text leaks out');
+});
+
 test('spent escrow: end reports escrow_spent (terminal) and evicts the session', async () => {
   const SPENT = '0x' + 'd'.repeat(30);   // stub: settle → "nullifiers already exist"
   const s = await jpost('/api/session/start', { buyerId: SPENT, tier: 'basic', balance: '10000000' });

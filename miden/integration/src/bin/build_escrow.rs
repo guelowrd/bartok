@@ -16,7 +16,7 @@ use miden_client::{
     account::AccountId,
     asset::{Asset, FungibleAsset},
     note::{
-        Note, NoteAssets, NoteRecipient, NoteScript, NoteStorage, NoteTag, NoteType,
+        Note, NoteAssets, NoteRecipient, NoteScript, NoteTag, NoteType,
         PartialNoteMetadata,
     },
     transaction::TransactionRequestBuilder,
@@ -81,17 +81,16 @@ fn main() -> Result<()> {
     let sr = seller_recipient.digest();
     let br = buyer_recipient.digest();
 
-    // 13-felt BartokSettlement storage (precomputed recipients + tags + note
-    // type + operator gate: only the operator multisig may consume).
-    let storage = NoteStorage::new(vec![
-        sr[0], sr[1], sr[2], sr[3],
-        Felt::from(NoteTag::with_account_target(seller)),
-        br[0], br[1], br[2], br[3],
-        Felt::from(NoteTag::with_account_target(buyer)),
-        Felt::from(NoteType::Private),
-        operator.prefix().as_felt(),
-        operator.suffix(),
-    ])?;
+    // 13-felt BartokSettlement storage via the shared SoT helper (operator gate
+    // included). Only the operator multisig may consume.
+    let storage = integration::helpers::settlement_storage(
+        sr,
+        NoteTag::with_account_target(seller),
+        br,
+        NoteTag::with_account_target(buyer),
+        NoteType::Private,
+        operator,
+    )?;
 
     let masp_bytes = std::fs::read(MASP)
         .or_else(|_| std::fs::read(MASP_ALT))

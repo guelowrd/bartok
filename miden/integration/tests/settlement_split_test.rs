@@ -10,7 +10,7 @@ use miden_client::{
     asset::{Asset, FungibleAsset},
     auth::AuthSchemeId,
     note::{
-        Note, NoteAssets, NoteRecipient, NoteScript, NoteStorage, NoteTag, NoteType,
+        Note, NoteAssets, NoteRecipient, NoteScript, NoteTag, NoteType,
         PartialNoteMetadata,
     },
     transaction::RawOutputNote,
@@ -66,18 +66,10 @@ async fn settlement_split_test() -> anyhow::Result<()> {
     let seller_rec = seller_p2id.digest();
     let buyer_rec = buyer_p2id.digest();
 
-    // 13-felt storage layout (charge is NOT in storage — it arrives as the note arg).
-    // Order must match the field declaration order in contracts/settlement-note/src/lib.rs.
-    // The consumer plays the operator role: the gate target is the executing account.
-    let storage = NoteStorage::new(vec![
-        seller_rec[0], seller_rec[1], seller_rec[2], seller_rec[3],
-        Felt::from(seller_tag),
-        buyer_rec[0], buyer_rec[1], buyer_rec[2], buyer_rec[3],
-        Felt::from(buyer_tag),
-        Felt::from(NoteType::Public),
-        consumer.id().prefix().as_felt(),
-        consumer.id().suffix(),
-    ])?;
+    // Charge is NOT in storage — it arrives as the note arg. The consumer plays
+    // the operator role: the gate target is the executing account.
+    let storage = integration::helpers::settlement_storage(
+        seller_rec, seller_tag, buyer_rec, buyer_tag, NoteType::Public, consumer.id())?;
 
     let escrow_serial = Word::from([1_u32, 2, 3, 4]);
     let recipient = NoteRecipient::new(escrow_serial, script, storage);
@@ -171,15 +163,8 @@ async fn settlement_gate_rejects_non_operator() -> anyhow::Result<()> {
     let buyer_rec = buyer_p2id.digest();
 
     // Gate target = consumer (operator role) — but the executor below is the buyer.
-    let storage = NoteStorage::new(vec![
-        seller_rec[0], seller_rec[1], seller_rec[2], seller_rec[3],
-        Felt::from(seller_tag),
-        buyer_rec[0], buyer_rec[1], buyer_rec[2], buyer_rec[3],
-        Felt::from(buyer_tag),
-        Felt::from(NoteType::Public),
-        consumer.id().prefix().as_felt(),
-        consumer.id().suffix(),
-    ])?;
+    let storage = integration::helpers::settlement_storage(
+        seller_rec, seller_tag, buyer_rec, buyer_tag, NoteType::Public, consumer.id())?;
 
     let recipient = NoteRecipient::new(Word::from([1_u32, 2, 3, 4]), script, storage);
     let metadata = PartialNoteMetadata::new(consumer.id(), NoteType::Public)

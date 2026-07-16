@@ -14,7 +14,7 @@ use miden_client::{
     account::{AccountId, AccountType},
     asset::{Asset, FungibleAsset},
     note::{
-        Note, NoteAssets, NoteRecipient, NoteScript, NoteStorage, NoteTag, NoteType,
+        Note, NoteAssets, NoteRecipient, NoteScript, NoteTag, NoteType,
         PartialNoteMetadata,
     },
     transaction::TransactionRequestBuilder,
@@ -146,15 +146,14 @@ async fn main() -> Result<()> {
     let sr = seller_rec.digest();
     let br = buyer_rec.digest();
 
-    let storage = NoteStorage::new(vec![
-        sr[0], sr[1], sr[2], sr[3],
-        Felt::from(NoteTag::with_account_target(seller)),
-        br[0], br[1], br[2], br[3],
-        Felt::from(NoteTag::with_account_target(buyer.id())),
-        Felt::from(NoteType::Private),
-        operator.prefix().as_felt(),
-        operator.suffix(),
-    ])?;
+    let storage = integration::helpers::settlement_storage(
+        sr,
+        NoteTag::with_account_target(seller),
+        br,
+        NoteTag::with_account_target(buyer.id()),
+        NoteType::Private,
+        operator,
+    )?;
 
     let escrow_note = Note::new(
         NoteAssets::new(vec![Asset::Fungible(FungibleAsset::new(faucet, budget)?)])?,

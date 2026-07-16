@@ -95,6 +95,32 @@ pub fn build_project_in_dir(dir: &Path, release: bool) -> Result<Package> {
     Package::read_from_bytes(&package_bytes).context("Failed to deserialize package from bytes")
 }
 
+/// Builds the 13-felt BartokSettlement note storage — the single source of
+/// truth for the layout. Field order MUST match the `#[note]` struct in
+/// contracts/settlement-note/src/lib.rs. Every escrow construction site (bins +
+/// tests) goes through here so the recipient/tag felts and the operator gate
+/// (last two felts) can never drift between sites.
+pub fn settlement_storage(
+    seller_recipient: miden_client::Word,
+    seller_tag: miden_client::note::NoteTag,
+    buyer_recipient: miden_client::Word,
+    buyer_tag: miden_client::note::NoteTag,
+    note_type: miden_client::note::NoteType,
+    operator: miden_client::account::AccountId,
+) -> Result<miden_client::note::NoteStorage> {
+    use miden_client::Felt;
+    miden_client::note::NoteStorage::new(vec![
+        seller_recipient[0], seller_recipient[1], seller_recipient[2], seller_recipient[3],
+        Felt::from(seller_tag),
+        buyer_recipient[0], buyer_recipient[1], buyer_recipient[2], buyer_recipient[3],
+        Felt::from(buyer_tag),
+        Felt::from(note_type),
+        operator.prefix().as_felt(),
+        operator.suffix(),
+    ])
+    .context("build settlement note storage")
+}
+
 /// Creates a basic wallet account (Falcon512Poseidon2 auth, key stored in the keystore).
 pub async fn create_basic_wallet_account(
     client: &mut Client<FilesystemKeyStore>,

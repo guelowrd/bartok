@@ -467,7 +467,9 @@ const server = http.createServer(async (req, res) => {
     // funded + committed on-chain before arming the session for paid chat.
     // Serving inference against a note the client merely claims exists would let
     // a buyer take free service (and crafted note bytes could redirect payout).
-    const vr = await runMiden('verify_escrow', ['--escrow-note-b64', s.params.noteB64], 180000);
+    // Timeout > the bin's own poll ceiling (~40×3s) so a slow-to-commit block
+    // isn't killed mid-poll and misreported as unconfirmed.
+    const vr = await runMiden('verify_escrow', ['--escrow-note-b64', s.params.noteB64], 220000);
     const v = lastJson(vr.out);
     if (!v || !v.committed) {
       console.error(`[session] ${body.sessionId} escrow not confirmed on-chain`);
